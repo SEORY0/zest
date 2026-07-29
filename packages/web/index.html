@@ -15,8 +15,8 @@
     <script>
       // Applied before first paint so the page never flashes the wrong theme.
       (() => {
-        const stored = localStorage.getItem('zest-theme');
-        const dark = stored ? stored === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+        const choice = localStorage.getItem('zest-theme') || 'system';
+        const dark = choice === 'dark' || (choice === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
         if (dark) document.documentElement.classList.add('dark');
       })();
     </script>

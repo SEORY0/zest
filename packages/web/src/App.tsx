@@ -13,6 +13,7 @@ import {
 import { InputPanel, OutputPanel } from './components/IOPanel.js';
 import { OperationLibrary } from './components/OperationLibrary.js';
 import { RecipePanel } from './components/RecipePanel.js';
+import { ThemeToggle } from './components/ThemeToggle.js';
 import { AboutPage } from './pages/AboutPage.js';
 import { SkillPage } from './pages/SkillPage.js';
 import { encodeRecipe, readRecipeFromUrl, useDebounced, useRoute, useTheme } from './lib/state.js';
@@ -21,7 +22,7 @@ const EMPTY: RunResult = { ok: true, output: new Uint8Array(0) as Bytes, steps: 
 
 export function App(): JSX.Element {
   const [route, navigate] = useRoute();
-  const [dark, toggleTheme] = useTheme();
+  const [themeChoice, chooseTheme] = useTheme();
 
   const [input, setInput] = useState('');
   const [inputEncoding, setInputEncoding] = useState<KeyEncoding>('utf8');
@@ -114,16 +115,11 @@ export function App(): JSX.Element {
           >
             About
           </a>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={toggleTheme}
-            aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-            title={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-          >
-            {dark ? '☀' : '☾'}
-          </button>
         </nav>
+
+        {/* Outside the nav: it is not navigation, and keeping it out of the
+            scrolling region means it stays visible on a narrow screen. */}
+        <ThemeToggle choice={themeChoice} onChoose={chooseTheme} />
       </header>
 
       {route === 'skill' ? (

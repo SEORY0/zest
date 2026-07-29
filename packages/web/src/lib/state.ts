@@ -11,19 +11,43 @@ import type { Recipe } from '@zest/core';
 
 const THEME_KEY = 'zest-theme';
 
-export function useTheme(): [boolean, () => void] {
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+export type ThemeChoice = 'light' | 'dark' | 'system';
 
-  const toggle = useCallback(() => {
-    setDark((previous) => {
-      const next = !previous;
-      document.documentElement.classList.toggle('dark', next);
-      localStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
-      return next;
-    });
+function readChoice(): ThemeChoice {
+  const stored = localStorage.getItem(THEME_KEY);
+  return stored === 'light' || stored === 'dark' ? stored : 'system';
+}
+
+/**
+ * Three-way theme control.
+ *
+ * `system` is the default and stays live: while it is selected the page
+ * follows the OS preference as it changes, rather than sampling it once at
+ * load. Choosing light or dark pins it and stops listening.
+ */
+export function useTheme(): [ThemeChoice, (choice: ThemeChoice) => void] {
+  const [choice, setChoice] = useState<ThemeChoice>(readChoice);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = (): void => {
+      const dark = choice === 'dark' || (choice === 'system' && media.matches);
+      document.documentElement.classList.toggle('dark', dark);
+    };
+
+    apply();
+    if (choice !== 'system') return;
+
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
+  }, [choice]);
+
+  const choose = useCallback((next: ThemeChoice) => {
+    localStorage.setItem(THEME_KEY, next);
+    setChoice(next);
   }, []);
 
-  return [dark, toggle];
+  return [choice, choose];
 }
 
 export type Route = 'workbench' | 'skill' | 'about';
