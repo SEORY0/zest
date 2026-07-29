@@ -69,10 +69,13 @@ export function SkillPage(): JSX.Element {
         <p>
           The skill drives the <code>zest</code> CLI, so install that as well:
         </p>
-        <div className="command">
-          <span className="command-prompt">$</span>
-          <span className="command-text">git clone {REPO_URL}.git &amp;&amp; cd zest &amp;&amp; npm install &amp;&amp; npm run build &amp;&amp; npm link -w @zest/cli</span>
-        </div>
+        <pre className="code-block">
+{`git clone ${REPO_URL}.git
+cd zest
+npm install
+npm run build
+npm link -w @zest/cli`}
+        </pre>
         <p style={{ marginTop: '0.75rem' }}>
           Everything runs locally. Nothing is uploaded, and no API key is involved.
         </p>
