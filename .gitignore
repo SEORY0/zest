@@ -1,0 +1,7 @@
+node_modules/
+dist/
+dist-test/
+.omc/
+*.tsbuildinfo
+.DS_Store
+*.log

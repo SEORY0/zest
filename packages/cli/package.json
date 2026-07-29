@@ -1,0 +1,22 @@
+{
+  "name": "@zest/cli",
+  "version": "0.1.0",
+  "description": "Command-line data and security workbench. Encode, decode, hash, encrypt and analyse without leaving the terminal.",
+  "type": "module",
+  "bin": {
+    "zest": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@zest/core": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "zest-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "packages/web"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build -w @zest/core && npm run build -w @zest/cli",
+    "build:web": "npm run build -w @zest/web",
+    "test": "npm run test -w @zest/core",
+    "dev": "npm run dev -w @zest/web",
+    "docs": "npm run build -w @zest/core && node scripts/generate-docs.mjs",
+    "check": "npm run build && npm test && npm run build:web"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

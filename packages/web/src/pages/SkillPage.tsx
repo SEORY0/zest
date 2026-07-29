@@ -1,0 +1,176 @@
+import { useState } from 'react';
+import { CATEGORIES, listOperations, operationsByCategory } from '@zest/core';
+
+const REPO_URL = 'https://github.com/SEORY0/zest';
+const INSTALL_COMMAND = 'npx degit SEORY0/zest/skills/zest ~/.claude/skills/zest';
+
+const RECIPES: { task: string; command: string }[] = [
+  { task: 'Decode an unknown blob', command: 'cat blob.txt | zest magic:depth=3' },
+  { task: 'Inspect a bearer token', command: 'zest -i "$TOKEN" jwt-decode' },
+  { task: 'Verify a webhook signature', command: 'zest -f body.json hmac:key=$SECRET,algorithm=SHA-256' },
+  { task: 'Pull indicators from a log', command: 'zest -f mail.eml extract-indicators' },
+  { task: 'Triage a suspicious file', command: 'zest -f sample.bin detect-file-type entropy' },
+  { task: 'Recover a XOR-obfuscated string', command: 'zest -i "$HEX" xor-brute-force:crib=http' },
+  { task: 'Decrypt captured ciphertext', command: 'zest -i "$CT" aes-decrypt:key=hex:$K,iv=hex:$IV,mode=GCM,input=Hex' },
+  { task: 'Read a Windows event timestamp', command: 'zest -i 133445222400000000 filetime-to-date' },
+];
+
+export function SkillPage(): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const operations = listOperations();
+  const grouped = operationsByCategory();
+
+  const copy = async (): Promise<void> => {
+    await navigator.clipboard.writeText(INSTALL_COMMAND);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <main className="page">
+      <div className="page-hero">
+        <div className="eyebrow">Agent skill</div>
+        <h1 className="page-title">Give your agent a security workbench.</h1>
+        <p className="page-lede">
+          The skill teaches an agent to reach for <code>zest</code> instead of writing throwaway Python for every decode,
+          hash and cipher. {operations.length} operations, one binary, no network calls — so an agent can work on a
+          token, a capture or a malware sample without sending any of it anywhere.
+        </p>
+
+        <div className="stat-row">
+          <div>
+            <div className="stat-value">{operations.length}</div>
+            <div className="stat-label">operations</div>
+          </div>
+          <div>
+            <div className="stat-value">{CATEGORIES.filter((c) => grouped.has(c)).length}</div>
+            <div className="stat-label">categories</div>
+          </div>
+          <div>
+            <div className="stat-value">0</div>
+            <div className="stat-label">network calls</div>
+          </div>
+        </div>
+      </div>
+
+      <section className="section">
+        <h2 className="section-title">Install</h2>
+        <div className="command">
+          <span className="command-prompt">$</span>
+          <span className="command-text">{INSTALL_COMMAND}</span>
+          <button type="button" className="button is-quiet" onClick={() => void copy()}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <p style={{ marginTop: '0.75rem' }}>
+          That drops the skill into your agent&rsquo;s skills directory. There is a second skill,{' '}
+          <code>zest-triage</code>, for working through an unknown file — swap the path to install it too.
+        </p>
+        <p>
+          The skill drives the <code>zest</code> CLI, so install that as well:
+        </p>
+        <div className="command">
+          <span className="command-prompt">$</span>
+          <span className="command-text">git clone {REPO_URL}.git &amp;&amp; cd zest &amp;&amp; npm install &amp;&amp; npm run build &amp;&amp; npm link -w @zest/cli</span>
+        </div>
+        <p style={{ marginTop: '0.75rem' }}>
+          Everything runs locally. Nothing is uploaded, and no API key is involved.
+        </p>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">How the agent uses it</h2>
+        <p>
+          Operations chain left to right, each one taking the previous step&rsquo;s bytes. The agent discovers what is
+          available with <code>zest ops</code>, reads an operation&rsquo;s arguments with <code>zest op &lt;id&gt;</code>,
+          and adds <code>--json</code> when it wants a structured result rather than text.
+        </p>
+        <pre className="code-block">
+{`$ zest ops jwt
+jwt-decode  Splits a JSON Web Token and decodes its header and payload.
+jwt-verify  Checks an HS256/384/512 signature against a shared secret.
+
+$ echo 'SGVsbG8sIHdvcmxkIQ==' | zest from-base64
+Hello, world!
+
+$ zest -i 'hello' md5 --json
+{
+  "ok": true,
+  "output": "5d41402abc4b2a76b9719d911017c592",
+  "outputEncoding": "utf8",
+  "outputBytes": 32,
+  "steps": [{ "index": 0, "op": "md5", "ok": true, "durationMs": 0.39 }]
+}`}
+        </pre>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Start here when you do not know what you are holding</h2>
+        <p>
+          <code>magic</code> tries every decoder whose input shape fits, scores what comes back by printability, entropy
+          and format signatures, and recurses. It finds nested encodings that would take a person several guesses.
+        </p>
+        <pre className="code-block">
+{`$ echo 'U0dWc2JHOHNJSGR2Y214a0lRPT0=' | zest magic:depth=2
+ 1. from-base64 → from-base64
+    score 35  (fully printable ASCII, entropy fell 0.74 bits)
+    Hello, world!
+
+ 2. from-base64
+    score 25  (fully printable ASCII)
+    SGVsbG8sIHdvcmxkIQ==`}
+        </pre>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Common tasks</h2>
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{ width: '40%' }}>Task</th>
+              <th>Command</th>
+            </tr>
+          </thead>
+          <tbody>
+            {RECIPES.map((recipe) => (
+              <tr key={recipe.task}>
+                <td style={{ fontFamily: 'var(--font-sans)', fontSize: '0.8125rem' }}>{recipe.task}</td>
+                <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>{recipe.command}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">What is in the box</h2>
+        <div className="grid-2">
+          {CATEGORIES.filter((category) => grouped.has(category)).map((category) => (
+            <div className="tile" key={category}>
+              <h3 className="tile-title">
+                {category} <span className="muted">· {grouped.get(category)!.length}</span>
+              </h3>
+              <p className="tile-body">
+                {grouped
+                  .get(category)!
+                  .slice(0, 6)
+                  .map((operation) => operation.name)
+                  .join(', ')}
+                {grouped.get(category)!.length > 6 ? '…' : ''}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">What it will not do</h2>
+        <p>
+          Zest transforms data you already have. It does not fetch URLs, scan hosts, look anything up in a threat feed or
+          call a model. When an operation is a toy — ROT, Vigenère, RC4 — the description says so, so an agent does not
+          reach for it as if it were security.
+        </p>
+      </section>
+    </main>
+  );
+}
