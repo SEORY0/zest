@@ -829,6 +829,342 @@ select.field {
   color: var(--gray-1000);
 }
 
+/* ------------------------------------------------------------------ figures */
+
+/*
+ * Figures sit in their own bordered surface with generous padding, following
+ * the reference system: the diagram is the focal point, the caption explains
+ * what to take from it, and neither competes with body text.
+ */
+.figure {
+  margin: 1.5rem 0 0;
+}
+
+.figure-body {
+  padding: 1.75rem;
+  border-radius: var(--radius-2xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-custom);
+}
+
+.figure-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Marks drawn with currentColor inherit this, so they stay legible against
+     whichever surface the theme is using. */
+  color: var(--gray-1200);
+}
+
+.figure-caption {
+  margin: 0.875rem 0.25rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--gray-1000);
+}
+
+.figure-pending {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--gray-900);
+}
+
+.figure-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.legend-item {
+  display: block;
+  padding: 0.625rem 0.75rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--gray-200);
+  box-shadow: var(--shadow-border);
+  text-align: left;
+  font: inherit;
+  cursor: default;
+  transition: box-shadow 120ms ease;
+}
+
+.legend-item.is-active {
+  box-shadow: var(--shadow-border), var(--shadow-focus);
+}
+
+.legend-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--gray-1200);
+}
+
+.legend-note {
+  display: block;
+  margin: 0.1875rem 0 0.375rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--gray-1000);
+}
+
+.legend-value {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--gray-1100);
+}
+
+/* One byte, several faces */
+
+.faces {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.625rem;
+}
+
+.face {
+  flex: 0 1 auto;
+  min-width: 5rem;
+  padding: 0.875rem 0.75rem;
+  border-radius: var(--radius-xl);
+  background: var(--gray-200);
+  box-shadow: var(--shadow-border);
+  text-align: center;
+}
+
+.face-value {
+  font-family: var(--font-mono);
+  font-size: 1.375rem;
+  line-height: 1.2;
+  color: var(--gray-1200);
+}
+
+.face-value.is-wide {
+  font-size: 0.9375rem;
+  letter-spacing: 0.02em;
+  padding: 0.28rem 0;
+}
+
+.face-label {
+  margin-top: 0.375rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--gray-1000);
+}
+
+.bits {
+  display: flex;
+  justify-content: center;
+  gap: 0.375rem;
+  margin-top: 1.25rem;
+}
+
+.bit {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--gray-300);
+  color: var(--gray-900);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.bit.is-on {
+  background: var(--gray-1200);
+  color: var(--gray-100);
+}
+
+/* Horizontal magnitude bars, shared by the size and entropy figures */
+
+.bars,
+.scale-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bar-label,
+.scale-label {
+  font-size: 0.8125rem;
+  color: var(--gray-1100);
+}
+
+.bar-track,
+.scale-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.bar-fill,
+.scale-fill {
+  height: 1.5rem;
+  /* Rounded data-end anchored to the baseline, square where it starts. */
+  border-radius: 0 4px 4px 0;
+  min-width: 2px;
+  transition: width 300ms ease;
+}
+
+.bar-value,
+.scale-value {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--gray-1100);
+  white-space: nowrap;
+}
+
+.bar-ratio {
+  margin-left: 0.5rem;
+  color: var(--gray-900);
+}
+
+/* Entropy scale, which needs a threshold reference line */
+
+.scale {
+  position: relative;
+}
+
+.scale-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding-left: 8.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--gray-900);
+}
+
+/* Sits to the left of the line, since the line is near the right edge. */
+.scale-threshold-label {
+  position: absolute;
+  right: 0.5rem;
+  top: -1.25rem;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--gray-1000);
+}
+
+.scale-row {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scale-rows {
+  position: relative;
+}
+
+/*
+ * The line marks a value on the track, which starts after the 8rem label
+ * column and its 0.5rem gap — so the percentage applies to what remains,
+ * not to the whole row.
+ */
+.scale-threshold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(8.5rem + (100% - 8.5rem) * 0.9375);
+  width: 1px;
+  border-left: 1px dashed var(--gray-700);
+  pointer-events: none;
+}
+
+.scale-note {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--gray-900);
+}
+
+/* Pipeline */
+
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pipeline-stage {
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-lg);
+  background: var(--gray-200);
+  box-shadow: var(--shadow-border);
+}
+
+.pipeline-op {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--gray-1200);
+}
+
+.pipeline-arrow {
+  color: var(--gray-900);
+}
+
+.pipeline-bytes {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  color: var(--gray-900);
+}
+
+.pipeline-preview {
+  margin-top: 0.3125rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  color: var(--gray-1000);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 40rem) {
+  .figure-body {
+    padding: 1rem;
+  }
+
+  .bar-row {
+    grid-template-columns: 4.5rem 1fr;
+  }
+
+  .scale-row {
+    grid-template-columns: 6rem 1fr;
+  }
+
+  .scale-head {
+    padding-left: 6.5rem;
+  }
+
+  .scale-threshold {
+    left: calc(6.5rem + (100% - 6.5rem) * 0.9375);
+  }
+
+  .bit {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

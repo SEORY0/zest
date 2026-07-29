@@ -26,10 +26,13 @@ export function useTheme(): [boolean, () => void] {
   return [dark, toggle];
 }
 
-export type Route = 'workbench' | 'skill';
+export type Route = 'workbench' | 'skill' | 'about';
 
 function readRoute(): Route {
-  return window.location.hash.startsWith('#/skill') ? 'skill' : 'workbench';
+  const hash = window.location.hash;
+  if (hash.startsWith('#/skill')) return 'skill';
+  if (hash.startsWith('#/about')) return 'about';
+  return 'workbench';
 }
 
 export function useRoute(): [Route, (route: Route) => void] {
@@ -42,7 +45,7 @@ export function useRoute(): [Route, (route: Route) => void] {
   }, []);
 
   const navigate = useCallback((next: Route) => {
-    window.location.hash = next === 'skill' ? '#/skill' : '#/';
+    window.location.hash = next === 'workbench' ? '#/' : `#/${next}`;
   }, []);
 
   return [route, navigate];

@@ -13,6 +13,7 @@ import {
 import { InputPanel, OutputPanel } from './components/IOPanel.js';
 import { OperationLibrary } from './components/OperationLibrary.js';
 import { RecipePanel } from './components/RecipePanel.js';
+import { AboutPage } from './pages/AboutPage.js';
 import { SkillPage } from './pages/SkillPage.js';
 import { encodeRecipe, readRecipeFromUrl, useDebounced, useRoute, useTheme } from './lib/state.js';
 
@@ -105,6 +106,14 @@ export function App(): JSX.Element {
           >
             Agent skill
           </a>
+          <a
+            className="nav-link"
+            href="#/about"
+            aria-current={route === 'about' ? 'page' : undefined}
+            onClick={() => navigate('about')}
+          >
+            About
+          </a>
           <button
             type="button"
             className="icon-button"
@@ -119,6 +128,8 @@ export function App(): JSX.Element {
 
       {route === 'skill' ? (
         <SkillPage />
+      ) : route === 'about' ? (
+        <AboutPage />
       ) : (
         <main className="workbench">
           <div className="column">
@@ -144,7 +155,8 @@ export function App(): JSX.Element {
       )}
 
       <footer className="footer">
-        Zest · no data leaves this page · <a href="#/skill">install the agent skill</a>
+        Zest · no data leaves this page · <a href="#/about">how it works</a> ·{' '}
+        <a href="#/skill">install the agent skill</a>
       </footer>
     </>
   );
