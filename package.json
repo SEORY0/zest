@@ -16,6 +16,7 @@
     "test": "npm run test -w @zest/core",
     "dev": "npm run dev -w @zest/web",
     "docs": "npm run build -w @zest/core && node scripts/generate-docs.mjs",
+    "publish:skill": "node scripts/publish-skill.mjs",
     "check": "npm run build && npm test && npm run build:web"
   },
   "devDependencies": {

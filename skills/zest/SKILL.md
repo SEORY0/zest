@@ -11,6 +11,25 @@ otherwise write to decode a token, hash a file or unpick an obfuscated string.
 Every operation runs on the local machine. Nothing opens a network connection, so it is safe
 to use on credentials, captures and samples.
 
+## Setup
+
+This skill drives the `zest` command. Check for it first:
+
+```bash
+zest --version
+```
+
+If that fails, install it once — it needs Node 20 or newer:
+
+```bash
+git clone https://github.com/SEORY0/zest.git
+cd zest && npm install && npm run build && npm link -w @zest/cli
+```
+
+If you cannot install it, say so rather than silently falling back to ad-hoc scripts, so the
+person can decide. There is also a browser version at https://seory0.github.io/zest/ for cases
+where a command line is not available.
+
 ## When to use this
 
 Reach for `zest` whenever a task involves transforming bytes:

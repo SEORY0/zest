@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { CATEGORIES, listOperations, operationsByCategory } from '@zest/core';
 
 const REPO_URL = 'https://github.com/SEORY0/zest';
-const INSTALL_COMMAND = 'npx degit SEORY0/zest/skills/zest ~/.claude/skills/zest';
+const SKILL_REPO = 'SEORY0/zest-skill';
+const INSTALL_COMMAND = `npx skills add ${SKILL_REPO}`;
 
 const RECIPES: { task: string; command: string }[] = [
   { task: 'Decode an unknown blob', command: 'cat blob.txt | zest magic:depth=3' },
@@ -63,11 +64,12 @@ export function SkillPage(): JSX.Element {
           </button>
         </div>
         <p style={{ marginTop: '0.75rem' }}>
-          That drops the skill into your agent&rsquo;s skills directory. There is a second skill,{' '}
-          <code>zest-triage</code>, for working through an unknown file — swap the path to install it too.
+          That installs both skills — <code>zest</code> for everyday encoding and crypto work, and{' '}
+          <code>zest-triage</code> for working through an unknown file. It writes to whichever agents it finds, so
+          Claude Code, Codex, Gemini CLI and the rest all pick them up. Add <code>--skill zest</code> to take just one.
         </p>
         <p>
-          The skill drives the <code>zest</code> CLI, so install that as well:
+          The skills drive the <code>zest</code> CLI, so install that as well. It needs Node 20 or newer:
         </p>
         <pre className="code-block">
 {`git clone ${REPO_URL}.git
@@ -77,7 +79,11 @@ npm run build
 npm link -w @zest/cli`}
         </pre>
         <p style={{ marginTop: '0.75rem' }}>
-          Everything runs locally. Nothing is uploaded, and no API key is involved.
+          Everything runs locally. Nothing is uploaded, and no API key is involved. Both skills are listed on{' '}
+          <a href={`https://www.skills.sh/${SKILL_REPO}`} target="_blank" rel="noreferrer noopener">
+            skills.sh
+          </a>
+          .
         </p>
       </section>
 

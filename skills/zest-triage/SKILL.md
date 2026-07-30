@@ -8,8 +8,17 @@ description: Triage an unknown or suspicious artefact — a file, a captured blo
 A repeatable first pass over an artefact you have not seen before. Everything runs locally, so
 the sample never leaves the machine.
 
-This skill assumes the `zest` CLI is available. See the `zest` skill for the general command
-model; this one is the investigative procedure built on top of it.
+## Setup
+
+This skill drives the `zest` command. Check for it with `zest --version`; if it is missing:
+
+```bash
+git clone https://github.com/SEORY0/zest.git
+cd zest && npm install && npm run build && npm link -w @zest/cli
+```
+
+See the companion `zest` skill for the general command model; this one is the investigative
+procedure built on top of it.
 
 ## Ground rules
 
