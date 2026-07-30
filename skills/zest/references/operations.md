@@ -3,6 +3,14 @@
 Generated from the registry — 103 operations across 10 categories.
 Do not edit by hand; run `npm run docs` instead.
 
+> **Keys in these examples are published test vectors**, quoted from the RFC or NIST document
+> that defines each algorithm, so the output can be checked against it. They are not secrets
+> and the literal form is only used here to make the vector visible.
+>
+> Never write a real key, password or token into an argument: argv is readable by any process
+> through `ps` and is saved to shell history. Read it with `env:NAME` or `file:PATH` instead —
+> `zest hmac:key=env:SIGNING_SECRET` — or `--input-env NAME` when the input itself is secret.
+
 ## Contents
 
 - **Encoding** — `to-base64`, `from-base64`, `to-base32`, `from-base32`, `to-base58`, `from-base58`, `to-base85`, `from-base85`, `to-hex`, `from-hex`, `url-encode`, `url-decode`, `to-html-entity`, `from-html-entity`, `to-charcode`, `from-charcode`, `to-binary`, `from-binary`, `to-decimal`, `from-decimal`, `to-quoted-printable`, `from-quoted-printable`, `to-morse`, `from-morse`, `to-latin1`

@@ -8,11 +8,11 @@ const INSTALL_COMMAND = `npx skills add ${SKILL_REPO}`;
 const RECIPES: { task: string; command: string }[] = [
   { task: 'Decode an unknown blob', command: 'cat blob.txt | zest magic:depth=3' },
   { task: 'Inspect a bearer token', command: 'zest -i "$TOKEN" jwt-decode' },
-  { task: 'Verify a webhook signature', command: 'zest -f body.json hmac:key=$SECRET,algorithm=SHA-256' },
+  { task: 'Verify a webhook signature', command: 'zest -f body.json hmac:key=env:SIGNING_SECRET' },
   { task: 'Pull indicators from a log', command: 'zest -f mail.eml extract-indicators' },
   { task: 'Triage a suspicious file', command: 'zest -f sample.bin detect-file-type entropy' },
   { task: 'Recover a XOR-obfuscated string', command: 'zest -i "$HEX" xor-brute-force:crib=http' },
-  { task: 'Decrypt captured ciphertext', command: 'zest -i "$CT" aes-decrypt:key=hex:$K,iv=hex:$IV,mode=GCM,input=Hex' },
+  { task: 'Decrypt captured ciphertext', command: 'zest -f ct.hex aes-decrypt:key=env:AES_KEY,iv=env:AES_IV,mode=GCM,input=Hex' },
   { task: 'Read a Windows event timestamp', command: 'zest -i 133445222400000000 filetime-to-date' },
 ];
 
@@ -129,6 +129,24 @@ $ zest -i 'hello' md5 --json
     score 25  (fully printable ASCII)
     SGVsbG8sIHdvcmxkIQ==`}
         </pre>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Secrets stay out of the command line</h2>
+        <p>
+          A key written into an argument is readable by any process through <code>ps</code> and is saved to shell
+          history — and an agent that follows such an example writes the secret verbatim into its own transcript. Keys
+          are read indirectly instead, so the value never enters <code>argv</code>.
+        </p>
+        <pre className="code-block">
+{`zest hmac:key=env:SIGNING_SECRET,algorithm=SHA-256
+zest aes-decrypt:key=file:/run/secrets/aes.key,iv=env:NONCE,mode=GCM,input=Hex
+zest --input-env SESSION_TOKEN jwt-decode`}
+        </pre>
+        <p style={{ marginTop: '0.75rem' }}>
+          The resolved value keeps any encoding prefix it carries, so a variable holding <code>hex:00112233</code> is
+          still read as hex.
+        </p>
       </section>
 
       <section className="section">

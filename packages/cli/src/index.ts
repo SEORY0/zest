@@ -73,6 +73,7 @@ async function readStdin(): Promise<Bytes> {
 }
 
 async function resolveInput(flags: Flags): Promise<Bytes> {
+  if (flags.inputEnv !== undefined) return decodeAs(flags.inputEnv, flags.inEncoding);
   if (flags.input !== undefined) return decodeAs(flags.input, flags.inEncoding);
   if (flags.file !== undefined) {
     const contents = await readFile(flags.file);
@@ -313,6 +314,7 @@ ${bold('usage')}
 
 ${bold('input')}
   -i, --input TEXT        use TEXT instead of reading stdin
+      --input-env NAME    read input from environment variable NAME
   -f, --file PATH         read input from PATH
       --in-encoding ENC   read input as utf8 (default), hex, base64 or latin1
 
@@ -334,6 +336,14 @@ ${bold('arguments')}
     zest find-replace:find="a,b",replace=x
   Keys and IVs take an inline encoding:
     zest aes-decrypt:key=hex:00112233...,iv=hex:aabb...,mode=GCM
+
+${bold('secrets')}
+  Never write a key or password into an argument — argv is visible to anyone
+  who can run \`ps\`, and it lands in shell history. Read it indirectly:
+    zest hmac:key=env:SIGNING_SECRET
+    zest aes-decrypt:key=file:/run/secrets/aes.key,iv=env:NONCE
+  The resolved value keeps any encoding prefix it contains, so a variable
+  holding "hex:00112233" is still read as hex.
 
 ${bold('examples')}
   ${dim('$')} echo 'SGVsbG8=' | zest from-base64

@@ -8,17 +8,16 @@ description: Triage an unknown or suspicious artefact — a file, a captured blo
 A repeatable first pass over an artefact you have not seen before. Everything runs locally, so
 the sample never leaves the machine.
 
-## Setup
+## Requirements
 
-This skill drives the `zest` command. Check for it with `zest --version`; if it is missing:
+This skill drives the `zest` command. Confirm it with `zest --version`. If it is missing, tell
+the person and stop rather than installing it yourself — installation instructions are in the
+project's README.
 
-```bash
-git clone https://github.com/SEORY0/zest.git
-cd zest && npm install && npm run build && npm link -w @zest/cli
-```
-
-See the companion `zest` skill for the general command model; this one is the investigative
-procedure built on top of it.
+Secrets and tokens found during triage must never be pasted into a command argument, where they
+would be exposed via `ps` and recorded in shell history. Use `env:NAME` or `file:PATH`, as the
+companion `zest` skill describes. That skill also covers the general command model; this one is
+the investigative procedure built on top of it.
 
 ## Ground rules
 
@@ -155,7 +154,7 @@ Confidence  Medium — based on static indicators only; not detonated.
 **A JWT from a bug report**
 
 ```bash
-zest -i "$TOKEN" jwt-decode
+zest --input-env SESSION_TOKEN jwt-decode
 ```
 
 Check `alg` first. `alg: none` is flagged explicitly and means a verifier honouring it accepts

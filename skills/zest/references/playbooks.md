@@ -40,13 +40,13 @@ zest -i 'user@example.test' sha2:size=SHA-256
 If none match, the value is probably salted or keyed. Check the shape first:
 
 ```bash
-zest -i "$TOKEN" analyse-hash
+zest --input-env SESSION_TOKEN analyse-hash
 ```
 
 Then try the common keyed constructions:
 
 ```bash
-zest -i 'user@example.test' hmac:key="$SECRET",algorithm=SHA-256
+zest -i 'user@example.test' hmac:key=env:HMAC_SECRET,algorithm=SHA-256
 ```
 
 ## Audit a JWT properly
@@ -54,7 +54,7 @@ zest -i 'user@example.test' hmac:key="$SECRET",algorithm=SHA-256
 Decoding is not verifying. Do both, in this order.
 
 ```bash
-zest -i "$TOKEN" jwt-decode
+zest --input-env SESSION_TOKEN jwt-decode
 ```
 
 Check three things in the output:
@@ -66,7 +66,7 @@ Check three things in the output:
 Then verify the signature, which is the only step that proves the token was not edited:
 
 ```bash
-zest -i "$TOKEN" jwt-verify:secret="$SECRET"
+zest --input-env SESSION_TOKEN jwt-verify:secret=env:JWT_SECRET
 ```
 
 A valid signature means the issuer produced it. It says nothing about whether the claims inside

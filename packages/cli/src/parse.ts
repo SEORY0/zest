@@ -6,6 +6,9 @@
  * `key=hex:00ff`.
  */
 
+import { readFileSync } from 'node:fs';
+import process from 'node:process';
+
 import type { Args, RecipeStep } from '@zest/core';
 
 export class UsageError extends Error {
@@ -51,6 +54,41 @@ function coerce(raw: string): string | number | boolean {
   return raw;
 }
 
+/**
+ * Read a value the command line never sees.
+ *
+ * A key or password written literally into an argument is exposed to anyone
+ * who can run `ps`, and is recorded in shell history and in the transcript of
+ * whatever ran the command. `env:NAME` and `file:PATH` keep the secret out of
+ * argv entirely.
+ *
+ * Resolution happens here rather than in the engine because the engine also
+ * runs in the browser, where neither source exists.
+ */
+export function resolveIndirect(raw: string): string | number | boolean {
+  const indirect = /^(env|file):([\s\S]+)$/.exec(raw);
+  if (!indirect) return coerce(raw);
+
+  const [, kind, reference] = indirect;
+
+  if (kind === 'env') {
+    const value = process.env[reference];
+    if (value === undefined) {
+      throw new UsageError(`Environment variable ${JSON.stringify(reference)} is not set.`);
+    }
+    return value;
+  }
+
+  try {
+    // Trim one trailing newline, which every editor adds and no key wants.
+    return readFileSync(reference, 'utf8').replace(/\r?\n$/, '');
+  } catch (error) {
+    throw new UsageError(
+      `Could not read ${JSON.stringify(reference)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
 export function parseStep(token: string): RecipeStep {
   const separator = token.indexOf(':');
   if (separator < 0) return { op: token, args: {} };
@@ -70,13 +108,14 @@ export function parseStep(token: string): RecipeStep {
     }
     const key = pair.slice(0, equals).trim();
     const value = pair.slice(equals + 1).replace(/^["']|["']$/g, '');
-    args[key] = coerce(value);
+    args[key] = resolveIndirect(value);
   }
   return { op, args };
 }
 
 export interface Flags {
   input?: string;
+  inputEnv?: string;
   file?: string;
   out?: string;
   inEncoding: 'utf8' | 'hex' | 'base64' | 'latin1';
@@ -122,6 +161,15 @@ export function parseArgv(argv: string[]): ParsedCommand {
       case '--input':
         flags.input = next();
         break;
+      case '--input-env': {
+        // For input that is itself sensitive — a bearer token, a session
+        // cookie — so it never appears in argv.
+        const name = next();
+        const value = process.env[name];
+        if (value === undefined) throw new UsageError(`Environment variable ${JSON.stringify(name)} is not set.`);
+        flags.inputEnv = value;
+        break;
+      }
       case '-f':
       case '--file':
         flags.file = next();

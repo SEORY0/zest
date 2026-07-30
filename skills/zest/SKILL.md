@@ -11,24 +11,38 @@ otherwise write to decode a token, hash a file or unpick an obfuscated string.
 Every operation runs on the local machine. Nothing opens a network connection, so it is safe
 to use on credentials, captures and samples.
 
-## Setup
+## Requirements
 
-This skill drives the `zest` command. Check for it first:
+This skill drives the `zest` command. Confirm it is present before relying on it:
 
 ```bash
 zest --version
 ```
 
-If that fails, install it once — it needs Node 20 or newer:
+If it is missing, tell the person and stop. Do not install it yourself — fetching and building
+software is their decision, not something a skill should do on their behalf. Installation
+instructions are in the project's README.
+
+## Handling secrets
+
+**Never write a key, password or token into a command.** Anything placed in an argument is
+readable by every process on the machine through `ps`, is saved to shell history, and is
+recorded verbatim in the transcript of this session.
+
+Read secrets indirectly instead:
 
 ```bash
-git clone https://github.com/SEORY0/zest.git
-cd zest && npm install && npm run build && npm link -w @zest/cli
+zest hmac:key=env:SIGNING_SECRET,algorithm=SHA-256
+zest aes-decrypt:key=file:/run/secrets/aes.key,iv=env:NONCE,mode=GCM,input=Hex
+zest --input-env SESSION_TOKEN jwt-decode
 ```
 
-If you cannot install it, say so rather than silently falling back to ad-hoc scripts, so the
-person can decide. There is also a browser version at https://seory0.github.io/zest/ for cases
-where a command line is not available.
+`env:NAME` reads an environment variable. `file:PATH` reads a file, trimming one trailing
+newline. The resolved value keeps any encoding prefix it contains, so a variable holding
+`hex:00112233` is still read as hex.
+
+If someone gives you a secret directly, have it placed in an environment variable or a file and
+reference that — do not echo the value back into a command you run.
 
 ## When to use this
 
@@ -68,7 +82,7 @@ Keys and IVs take an inline encoding.
 ```bash
 zest to-base64:alphabet=URL-safe,padding=false
 zest find-replace:find="a,b",replace=x
-zest aes-decrypt:key=hex:0011...,iv=hex:aabb...,mode=GCM,input=Hex
+zest aes-decrypt:key=env:AES_KEY,iv=env:AES_IV,mode=GCM,input=Hex
 ```
 
 ## Discovering what is available
@@ -130,19 +144,19 @@ and format signatures, and recurses. Options:
 **Decode a JWT and check whether it is expired**
 
 ```bash
-zest -i "$TOKEN" jwt-decode
+zest --input-env SESSION_TOKEN jwt-decode
 ```
 
 The `claims as dates` section marks `exp` as expired or still valid. To check the signature:
 
 ```bash
-zest -i "$TOKEN" jwt-verify:secret="$SECRET"
+zest --input-env SESSION_TOKEN jwt-verify:secret=env:JWT_SECRET
 ```
 
 **Verify a webhook signature**
 
 ```bash
-zest -f body.json hmac:key="$SIGNING_SECRET",algorithm=SHA-256
+zest -f body.json hmac:key=env:SIGNING_SECRET,algorithm=SHA-256
 ```
 
 Compare the digest to the header value. A mismatch means the body was altered or the secret is wrong.
@@ -150,7 +164,7 @@ Compare the digest to the header value. A mismatch means the body was altered or
 **Decrypt captured AES-GCM ciphertext**
 
 ```bash
-zest -i "$CIPHERTEXT_HEX" aes-decrypt:key=hex:"$KEY",iv=hex:"$NONCE",mode=GCM,input=Hex
+zest -f ciphertext.hex aes-decrypt:key=env:AES_KEY,iv=env:AES_IV,mode=GCM,input=Hex
 ```
 
 GCM authenticates as well as decrypts, so a failure means the key, nonce, additional data or
