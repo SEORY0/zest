@@ -15,6 +15,7 @@ import {
   hexDecode,
   hexEncode,
   latin1Decode,
+  latin1Encode,
   utf8Decode,
   utf8Encode,
 } from '../bytes.js';
@@ -717,13 +718,13 @@ export const encodingOps: Operation[] = [
   },
   {
     id: 'to-latin1',
-    name: 'Reinterpret as Latin-1',
+    name: 'Repair UTF-8 mojibake',
     category: 'Encoding',
-    description: 'Reads each byte as one Latin-1 character and re-encodes the result as UTF-8. Repairs text that was decoded with the wrong charset (mojibake).',
+    description: 'Treats the input text code points as Latin-1 bytes, repairing UTF-8 text that was previously decoded with the wrong charset.',
     keywords: ['mojibake', 'iso-8859-1', 'charset', 'encoding'],
-    examples: [{ input: 'cafÃ©', output: 'cafÃÂ©' }],
+    examples: [{ name: 'Repair UTF-8 decoded as Latin-1', input: 'cafÃ©', output: 'café' }],
     run(input) {
-      return utf8Encode(latin1Decode(input));
+      return latin1Encode(utf8Decode(input));
     },
   },
 ];

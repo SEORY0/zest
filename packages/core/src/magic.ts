@@ -11,7 +11,8 @@ import { getOperation } from './registry.js';
 import { runRecipe } from './run.js';
 import { detectFileType } from './filetypes.js';
 import { looksPrintable, shannonEntropy, utf8Decode, utf8Encode } from './bytes.js';
-import type { Args, Bytes, Operation, Recipe } from './types.js';
+import { candidateAttempts } from './magic-candidates.js';
+import type { Bytes, Operation, Recipe } from './types.js';
 
 export interface MagicMatch {
   recipe: Recipe;
@@ -33,87 +34,6 @@ export interface MagicOptions {
   intensive?: boolean;
   maxResults?: number;
 }
-
-interface Candidate {
-  op: string;
-  args?: Args;
-  /** Cheap gate — skip the operation entirely when the input cannot be this format. */
-  applies: (data: Bytes, text: string) => boolean;
-}
-
-const isMostlyText = (data: Bytes): boolean => looksPrintable(data, 0.95);
-
-const CANDIDATES: Candidate[] = [
-  {
-    op: 'from-base64',
-    applies: (d, t) => isMostlyText(d) && /^[A-Za-z0-9+/=\s]{8,}$/.test(t) && t.replace(/[\s=]/g, '').length % 4 !== 1,
-  },
-  {
-    op: 'from-base64',
-    args: { alphabet: 'URL-safe' },
-    applies: (d, t) => isMostlyText(d) && /[-_]/.test(t) && /^[A-Za-z0-9\-_=\s]{8,}$/.test(t),
-  },
-  {
-    op: 'from-hex',
-    applies: (d, t) => isMostlyText(d) && /^[0-9a-fA-F\s:,-]{8,}$/.test(t) && t.replace(/[^0-9a-fA-F]/g, '').length % 2 === 0,
-  },
-  {
-    op: 'from-base32',
-    applies: (d, t) => isMostlyText(d) && /^[A-Z2-7=\s]{8,}$/.test(t),
-  },
-  {
-    op: 'from-base58',
-    applies: (d, t) => isMostlyText(d) && /^[1-9A-HJ-NP-Za-km-z]{8,}$/.test(t),
-  },
-  {
-    op: 'from-base85',
-    // Requires at least one character outside the Base64 alphabet, so plain
-    // Base64 is not misread as Ascii85.
-    applies: (d, t) => isMostlyText(d) && /^[!-u\s]{8,}$/.test(t) && /[!"#$%&'()*,.:;<=>?@[\]^`{|}~-]/.test(t),
-  },
-  {
-    op: 'url-decode',
-    applies: (_d, t) => /%[0-9a-fA-F]{2}/.test(t),
-  },
-  {
-    op: 'from-html-entity',
-    applies: (_d, t) => /&(#x?[0-9a-fA-F]+|[a-zA-Z]{2,10});/.test(t),
-  },
-  {
-    op: 'from-quoted-printable',
-    applies: (_d, t) => /=[0-9A-F]{2}/.test(t),
-  },
-  {
-    op: 'from-binary',
-    applies: (_d, t) => /^[01\s]{16,}$/.test(t) && t.replace(/\s/g, '').length % 8 === 0,
-  },
-  {
-    op: 'from-decimal',
-    applies: (_d, t) => /^(\d{1,3}[\s,;]+){3,}\d{1,3}$/.test(t.trim()),
-  },
-  {
-    op: 'from-morse',
-    applies: (_d, t) => /^[.\-/\s]{6,}$/.test(t) && /[.-]/.test(t),
-  },
-  {
-    op: 'gunzip',
-    applies: (d) => d.length > 2 && ((d[0] === 0x1f && d[1] === 0x8b) || d[0] === 0x78),
-  },
-  {
-    op: 'rot',
-    args: { amount: 13 },
-    applies: (_d, t) => /[a-zA-Z]{4,}/.test(t) && t.length < 100_000,
-  },
-  {
-    op: 'from-charcode',
-    args: { base: 'Hexadecimal' },
-    applies: (_d, t) => /^(0x[0-9a-fA-F]{1,2}[\s,]+){3,}/.test(t.trim()),
-  },
-  {
-    op: 'jwt-decode',
-    applies: (_d, t) => /^(Bearer\s+)?[\w-]+\.[\w-]+\.[\w-]*$/.test(t.trim()),
-  },
-];
 
 const PRINTABLE_ASCII = /^[\x09\x0a\x0d\x20-\x7e]*$/;
 
@@ -236,13 +156,7 @@ export async function magic(input: Bytes, options: MagicOptions = {}): Promise<M
     if (remaining === 0) return;
     const text = utf8Decode(data).trim();
 
-    const attempts: { op: string; args?: Args }[] = CANDIDATES.filter((c) => {
-      try {
-        return c.applies(data, text);
-      } catch {
-        return false;
-      }
-    }).map((c) => ({ op: c.op, args: c.args }));
+    const attempts = candidateAttempts(data, text);
 
     if (options.intensive && recipe.length === 0) {
       for (let key = 1; key < 256; key++) {
@@ -310,7 +224,7 @@ export const magicOp: Operation = {
   name: 'Magic',
   category: 'Analysis',
   description:
-    'Works out what the input is by trying every plausible decoding and ranking the results. Start here when you do not know what you are holding.',
+    'Ranks a bounded set of plausible local decodings. Use it to form hypotheses when you do not know what you are holding.',
   keywords: ['detect', 'auto', 'identify', 'decode', 'guess', 'unknown'],
   args: [
     { name: 'depth', label: 'Chain up to N decoders', type: 'number', default: 3, min: 1, max: 4 },
@@ -325,7 +239,9 @@ export const magicOp: Operation = {
     });
 
     if (matches.length === 0) {
-      return utf8Encode('No decoding produced a better-looking result. The input may already be plaintext, or encrypted with an unknown key.');
+      return utf8Encode(
+        'No candidate in Magic\'s bounded decoder set produced a convincing result. Try an explicit operation suggested by the input shape, then inspect file type and entropy before deciding it is encrypted.',
+      );
     }
 
     return utf8Encode(

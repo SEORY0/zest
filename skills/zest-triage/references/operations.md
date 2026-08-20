@@ -472,7 +472,7 @@ SOS
 
 ### `to-latin1`
 
-**Reinterpret as Latin-1** — Reads each byte as one Latin-1 character and re-encodes the result as UTF-8. Repairs text that was decoded with the wrong charset (mojibake).
+**Repair UTF-8 mojibake** — Treats the input text code points as Latin-1 bytes, repairing UTF-8 text that was previously decoded with the wrong charset.
 
 _Also known as: mojibake, iso-8859-1, charset, encoding._
 
@@ -480,9 +480,10 @@ _No arguments._
 
 **Examples**
 
+_Repair UTF-8 decoded as Latin-1_
 ```console
 $ zest -i "cafÃ©" to-latin1
-cafÃÂ©
+café
 ```
 
 ## Hashing
@@ -1735,7 +1736,7 @@ Hÿ
 
 ### `magic`
 
-**Magic** — Works out what the input is by trying every plausible decoding and ranking the results. Start here when you do not know what you are holding.
+**Magic** — Ranks a bounded set of plausible local decodings. Use it to form hypotheses when you do not know what you are holding.
 
 _Also known as: detect, auto, identify, decode, guess, unknown._
 
