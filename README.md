@@ -1,14 +1,15 @@
 # Zest
 
-A local-first data and security workbench — a browser app, a CLI, and a pair of agent skills
-over one engine.
+A local-first data and security workbench — a browser app, a CLI, and three agent skills over
+one engine.
 
 Chain operations into a recipe the way you would in CyberChef, but with a calmer interface, a
 CLI that composes with the rest of your shell, and skills so an agent can use the same 103
 operations instead of writing throwaway scripts.
 
 Nothing opens a network connection. The browser app has no backend; the CLI makes no requests.
-Credentials, captures and samples stay where they are.
+Inputs stay on the device, though real secrets still need env/file discipline so they do not
+leak through process arguments, shell history or agent transcripts.
 
 **[Try it →](https://seory0.github.io/zest/)**
 
@@ -16,10 +17,11 @@ Credentials, captures and samples stay where they are.
 
 | Package | What it is |
 | --- | --- |
-| `packages/core` | The engine. Zero dependencies, isomorphic, 103 operations, 217 tests. |
+| `packages/core` | The engine. Zero dependencies, isomorphic, 103 operations, 219 tests. |
 | `packages/cli` | The `zest` command. |
 | `packages/web` | The browser workbench. |
 | `skills/zest` | Agent skill for the general workbench. |
+| `skills/zest-ctf` | Agent skill for CTF crypto, misc and first-pass artefact solving. |
 | `skills/zest-triage` | Agent skill for triaging an unknown artefact. |
 
 ## Getting started
@@ -27,7 +29,7 @@ Credentials, captures and samples stay where they are.
 ```bash
 npm install
 npm run build      # core + cli
-npm test           # 217 tests
+npm test           # engine tests + standalone skill package checks
 npm run dev        # the workbench at http://localhost:5173
 ```
 
@@ -45,8 +47,8 @@ Operations chain left to right, each taking the previous step's bytes.
 $ echo 'SGVsbG8sIHdvcmxkIQ==' | zest from-base64
 Hello, world!
 
-$ zest -i 'admin:secret' to-base64 to-hex:separator=None
-59575274615734366332566a636d5630
+$ zest -i 'player:demo' to-base64 to-hex:separator=None
+63477868655756794f6d526c6257383d
 
 $ zest -f capture.bin gunzip json-format
 ```
@@ -81,9 +83,10 @@ $ echo 'U0dWc2JHOHNJSGR2Y214a0lRPT0=' | zest magic:depth=2
     Hello, world!
 ```
 
-It tries every decoder whose input shape fits, scores what comes back by printability, entropy
-change and format signatures, and recurses. `crib=TEXT` narrows to results containing known
-plaintext; `intensive=true` adds all 256 single-byte XOR keys.
+It ranks a bounded set of decoders and simple transforms whose input shape fits, scores what
+comes back by printability, entropy change and format signatures, and recurses. `crib=TEXT`
+narrows to results containing known plaintext; `intensive=true` adds all 256 single-byte XOR
+keys. No result is not proof that the input is plaintext or encrypted.
 
 ## The workbench
 
@@ -105,8 +108,9 @@ a decode worked without reading it.
 npx skills add SEORY0/zest-skill
 ```
 
-That installs both skills into whichever agents it finds — Claude Code, Codex, Gemini CLI and
-the rest. Add `--skill zest` or `--skill zest-triage` to take just one. Both are listed on
+That installs all three skills into whichever agents it finds — Claude Code, Codex, Gemini CLI
+and the rest. Add `--skill zest`, `--skill zest-ctf` or `--skill zest-triage` to take just one.
+They are listed on
 [skills.sh](https://www.skills.sh/SEORY0/zest-skill).
 
 The skills live in `skills/` here and are mirrored to
@@ -114,11 +118,13 @@ The skills live in `skills/` here and are mirrored to
 whole workbench. This repository is the source of truth; run `npm run publish:skill` after
 changing anything under `skills/`.
 
-Both skills drive the `zest` CLI, so install that too (`npm link -w @zest/cli` above).
+The skills drive the `zest` CLI, so install that too (`npm link -w @zest/cli` above).
 
-`skills/zest` teaches the command model, discovery and result handling. `skills/zest-triage` is
-a procedure for unknown artefacts: identify by magic bytes, measure entropy, extract strings and
-indicators, defang for reporting.
+`skills/zest` teaches the command model, discovery and result handling. `skills/zest-ctf`
+organises flag-focused hypotheses and executable playbooks for encodings, XOR/classical ciphers,
+known-key crypto, hashes, web tokens and byte carving. `skills/zest-triage` is a procedure for
+unknown artefacts: identify by magic bytes, measure entropy, extract strings and indicators,
+defang for reporting.
 
 `references/operations.md` in each skill is generated from the registry by `npm run docs`, so the
 catalogue an agent reads always matches the code.
@@ -165,9 +171,8 @@ docs cannot drift from the behaviour.
 
 ```console
 $ npm test
-# tests 217
-# pass 217
-# fail 0
+# core: 219 passed
+# skill package: 2 passed
 ```
 
 ## Design

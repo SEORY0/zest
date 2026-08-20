@@ -126,7 +126,7 @@ export function AboutPage(): JSX.Element {
             <div className="stat-label">operations</div>
           </div>
           <div>
-            <div className="stat-value">217</div>
+            <div className="stat-value">219</div>
             <div className="stat-label">tests</div>
           </div>
           <div>

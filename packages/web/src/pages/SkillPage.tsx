@@ -7,6 +7,7 @@ const INSTALL_COMMAND = `npx skills add ${SKILL_REPO}`;
 
 const RECIPES: { task: string; command: string }[] = [
   { task: 'Decode an unknown blob', command: 'cat blob.txt | zest magic:depth=3' },
+  { task: 'Find a CTF flag', command: "zest -f challenge.txt magic:depth=4,crib='flag{',intensive=true" },
   { task: 'Inspect a bearer token', command: 'zest -i "$TOKEN" jwt-decode' },
   { task: 'Verify a webhook signature', command: 'zest -f body.json hmac:key=env:SIGNING_SECRET' },
   { task: 'Pull indicators from a log', command: 'zest -f mail.eml extract-indicators' },
@@ -64,9 +65,10 @@ export function SkillPage(): JSX.Element {
           </button>
         </div>
         <p style={{ marginTop: '0.75rem' }}>
-          That installs both skills — <code>zest</code> for everyday encoding and crypto work, and{' '}
-          <code>zest-triage</code> for working through an unknown file. It writes to whichever agents it finds, so
-          Claude Code, Codex, Gemini CLI and the rest all pick them up. Add <code>--skill zest</code> to take just one.
+          That installs three skills: <code>zest</code> for everyday encoding and crypto work,{' '}
+          <code>zest-ctf</code> for flag-focused challenge solving, and <code>zest-triage</code> for working through an
+          unknown file. It writes to whichever agents it finds, so Claude Code, Codex, Gemini CLI and the rest all pick
+          them up. Add <code>--skill zest-ctf</code> to take only the CTF workflow.
         </p>
         <p>
           The skills drive the <code>zest</code> CLI, so install that as well. It needs Node 20 or newer:
@@ -79,7 +81,7 @@ npm run build
 npm link -w @zest/cli`}
         </pre>
         <p style={{ marginTop: '0.75rem' }}>
-          Everything runs locally. Nothing is uploaded, and no API key is involved. Both skills are listed on{' '}
+          Everything runs locally. Nothing is uploaded, and no API key is involved. All three skills are listed on{' '}
           <a href={`https://www.skills.sh/${SKILL_REPO}`} target="_blank" rel="noreferrer noopener">
             skills.sh
           </a>
@@ -116,8 +118,9 @@ $ zest -i 'hello' md5 --json
       <section className="section">
         <h2 className="section-title">Start here when you do not know what you are holding</h2>
         <p>
-          <code>magic</code> tries every decoder whose input shape fits, scores what comes back by printability, entropy
-          and format signatures, and recurses. It finds nested encodings that would take a person several guesses.
+          <code>magic</code> ranks a bounded set of decoders and simple transforms whose input shape fits, scores what
+          comes back by printability, entropy and format signatures, and recurses. A known flag prefix can be supplied
+          as a crib; no result is not proof that the input is plaintext or encrypted.
         </p>
         <pre className="code-block">
 {`$ echo 'U0dWc2JHOHNJSGR2Y214a0lRPT0=' | zest magic:depth=2

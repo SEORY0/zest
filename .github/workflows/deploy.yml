@@ -29,7 +29,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Builds core and cli, runs the 217 engine tests, then builds the web
+      # Builds core and cli, runs the engine and skill package tests, then builds the web
       # bundle. Nothing ships unless the engine is green.
       - name: Build and test
         run: npm run check

@@ -1195,6 +1195,13 @@ select.field {
 }
 
 @media (max-width: 40rem) {
+  .table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
   .figure-body {
     padding: 1rem;
   }
