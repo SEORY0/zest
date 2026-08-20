@@ -18,14 +18,27 @@ Read the top result's chain, then run it explicitly so the steps are visible and
 zest -i "$BLOB" from-base64 gunzip json-format
 ```
 
-If `magic` returns nothing above zero, the input is either already plaintext or encrypted with a
-key you do not have. Check which:
+If `magic` returns nothing, do not conclude that the input is plaintext or encrypted. Its search
+is intentionally bounded. Test the representation suggested by the challenge syntax explicitly:
+
+```bash
+zest -i "$BLOB" from-decimal
+zest -i "$BLOB" from-charcode:base=Hexadecimal
+zest -i "$BLOB" from-binary
+zest -i "$BLOB" from-morse
+zest -i "$BLOB" rot:amount=13
+zest -i "$BLOB" rot47
+```
+
+Use `zest op <id>` first when the input shape or argument is uncertain. If those fail, measure
+entropy as evidence for the next hypothesis:
 
 ```bash
 zest -i "$BLOB" entropy
 ```
 
-Above 7.5 means encrypted or compressed, and no amount of decoding will help without the key.
+Above 7.5 is consistent with encryption, compression or random data; it does not distinguish
+between them and does not prove that a key is required.
 
 ## Work out how a value was derived
 
@@ -95,9 +108,10 @@ zest -f b.bin sha2:size=SHA-256
 Different digests tell you they differ. To find out where:
 
 ```bash
-zest -f a.bin hexdump -o a.hex
-zest -f b.bin hexdump -o b.hex
-diff a.hex b.hex | head -20
+case_dir="$(mktemp -d)"
+zest -f a.bin hexdump -o "$case_dir/a.hex"
+zest -f b.bin hexdump -o "$case_dir/b.hex"
+diff "$case_dir/a.hex" "$case_dir/b.hex" | head -20
 ```
 
 The offset column in the first differing line is the byte offset.

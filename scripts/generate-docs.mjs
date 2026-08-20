@@ -105,9 +105,13 @@ for (const category of CATEGORIES) {
   }
 }
 
-const reference = `${lines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`;
+const reference = `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 
-for (const target of ['skills/zest/references/operations.md', 'skills/zest-triage/references/operations.md']) {
+for (const target of [
+  'skills/zest/references/operations.md',
+  'skills/zest-ctf/references/operations.md',
+  'skills/zest-triage/references/operations.md',
+]) {
   await writeFile(join(root, target), reference, 'utf8');
 }
 

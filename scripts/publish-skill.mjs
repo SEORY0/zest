@@ -89,7 +89,7 @@ ${rows}
 
 ## The CLI
 
-Both skills drive the \`zest\` command. Install it once — it needs Node 20 or newer:
+The skills drive the \`zest\` command. Install it once — it needs Node 20 or newer:
 
 \`\`\`bash
 git clone https://github.com/SEORY0/zest.git
@@ -106,8 +106,9 @@ $ echo 'U0dWc2JHOHNJSGR2Y214a0lRPT0=' | zest magic:depth=2
     Hello, world!
 \`\`\`
 
-There is a browser version at <https://seory0.github.io/zest/> for when a command line is not
-available.
+There is a browser version at <https://seory0.github.io/zest/> for non-sensitive data when a
+command line is unavailable. Do not load secrets, private captures or suspicious samples into
+a remotely hosted page.
 
 ## Note
 

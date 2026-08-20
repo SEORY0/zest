@@ -8,8 +8,9 @@ description: Encode, decode, hash, encrypt, decrypt and inspect data with the lo
 `zest` is a local data and security workbench. It replaces the one-off scripts you would
 otherwise write to decode a token, hash a file or unpick an obfuscated string.
 
-Every operation runs on the local machine. Nothing opens a network connection, so it is safe
-to use on credentials, captures and samples.
+Every operation runs on the local machine and opens no network connection. That removes network
+exposure, but local process arguments, shell history, files and the agent transcript can still
+leak sensitive values. Follow the secret-handling rules below.
 
 ## Requirements
 
@@ -19,13 +20,16 @@ This skill drives the `zest` command. Confirm it is present before relying on it
 zest --version
 ```
 
-If it is missing, tell the person and stop. Do not install it yourself — fetching and building
-software is their decision, not something a skill should do on their behalf. Installation
-instructions are in the project's README.
+If it is missing, report that the skill cannot run and point to the project's installation
+instructions. Do not fetch or install software unless the person explicitly asks for that action.
+
+The installed CLI is runtime truth. If this skill's catalogue and `zest ops --json` disagree,
+report the installed version and use `zest op ID` to confirm supported arguments. Do not guess a
+new operation or silently replace the user's installation.
 
 ## Handling secrets
 
-**Never write a key, password or token into a command.** Anything placed in an argument is
+**Never write a real key, password or token into a command.** Anything placed in an argument is
 readable by every process on the machine through `ps`, is saved to shell history, and is
 recorded verbatim in the transcript of this session.
 
@@ -43,6 +47,10 @@ newline. The resolved value keeps any encoding prefix it contains, so a variable
 
 If someone gives you a secret directly, have it placed in an environment variable or a file and
 reference that — do not echo the value back into a command you run.
+
+Public constants deliberately supplied as CTF challenge material or published test vectors are
+not credentials. They may be written literally when doing so makes a reproducible recipe clearer;
+label them as public challenge data so they are not confused with live secrets.
 
 ## When to use this
 
@@ -72,7 +80,7 @@ Input comes from stdin, `-i TEXT` or `-f FILE`. Output goes to stdout, or `-o FI
 
 ```bash
 echo 'SGVsbG8sIHdvcmxkIQ==' | zest from-base64
-zest -i 'admin:secret' to-base64 to-hex:separator=None
+zest -i 'player:demo' to-base64 to-hex:separator=None
 zest -f payload.bin gunzip json-format
 ```
 
@@ -132,12 +140,19 @@ $ echo 'U0dWc2JHOHNJSGR2Y214a0lRPT0=' | zest magic:depth=2
     Hello, world!
 ```
 
-It tries every decoder whose input shape fits, scores results by printability, entropy change
-and format signatures, and recurses. Options:
+It tries a bounded set of likely decoders whose input shape fits, scores results by printability,
+entropy change and format signatures, and recurses. The set includes common base encodings,
+URL/HTML/quoted-printable, numeric text, Morse, gzip/zlib, ROT13, ROT47, bitwise-NOT and JWT.
+Options:
 
 - `depth=N` — how many decoders to chain (1–4, default 3)
 - `crib=TEXT` — only report results containing this text
-- `intensive=true` — also try all 256 single-byte XOR keys
+- `intensive=true` — also try all 256 single-byte XOR keys at the first layer
+
+Treat `magic` as a hypothesis generator, not proof. It does not recover arbitrary Caesar or
+Vigenère keys, RC4/AES keys, repeating-XOR keys, archive members, steganography or packet streams.
+No result only means its bounded candidate set found nothing convincing. Continue with the
+explicit fallback checks in `references/playbooks.md` or hand the artefact to a specialist tool.
 
 ## Worked patterns
 

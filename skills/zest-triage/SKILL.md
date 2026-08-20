@@ -10,14 +10,24 @@ the sample never leaves the machine.
 
 ## Requirements
 
-This skill drives the `zest` command. Confirm it with `zest --version`. If it is missing, tell
-the person and stop rather than installing it yourself — installation instructions are in the
-project's README.
+This skill drives the `zest` command. Confirm it with `zest --version`. If it is missing, report
+that the workflow cannot run and point to the project's installation instructions. Do not fetch
+or install software unless the person explicitly asks for that action.
+
+If the generated catalogue and the installed CLI differ, `zest ops` and `zest op ID` are runtime
+truth. Record the installed version and report the mismatch instead of guessing an operation.
 
 Secrets and tokens found during triage must never be pasted into a command argument, where they
-would be exposed via `ps` and recorded in shell history. Use `env:NAME` or `file:PATH`, as the
-companion `zest` skill describes. That skill also covers the general command model; this one is
-the investigative procedure built on top of it.
+would be exposed via `ps` and recorded in shell history. Use `--input-env NAME` for sensitive
+input and `env:NAME` or `file:PATH` for sensitive operation arguments:
+
+```bash
+zest --input-env SESSION_TOKEN jwt-decode
+zest -f body.bin hmac:key=env:SIGNING_SECRET,algorithm=SHA-256
+```
+
+The command model is `zest -f FILE operation:arg=value`; operations chain left to right. Discover
+names and arguments with `zest ops QUERY` and `zest op ID` instead of guessing them.
 
 ## Ground rules
 
@@ -65,7 +75,8 @@ A file that is mostly ~6 with one sustained > 7.5 region is the classic shape of
 binary or an embedded encrypted payload. Use the block offsets to carve it:
 
 ```bash
-zest -f sample.bin take-bytes:start=8192,length=4096 -o payload.bin
+case_dir="$(mktemp -d)"
+zest -f sample.bin take-bytes:start=8192,length=4096 -o "$case_dir/payload.bin"
 ```
 
 ### 3. What does it say?
@@ -110,6 +121,11 @@ loaders and droppers. For a XOR key specifically:
 ```bash
 zest -i "$HEX" xor-brute-force:crib=http
 ```
+
+`magic` also tries common base encodings, numeric text, Morse, gzip/zlib, ROT13, ROT47 and
+bitwise-NOT. It does not recover repeating-XOR, Vigenère, RC4 or AES keys, extract archives,
+parse packets, disassemble code or inspect steganographic channels. No result is not proof that
+the input is plaintext or irrecoverable.
 
 ### 6. Record the identity
 
@@ -180,6 +196,24 @@ zest -i 133445222400000000 filetime-to-date
 ```bash
 zest -f capture.json json-path:path=data.payload from-base64 gunzip json-format
 ```
+
+## Stop and hand off
+
+Zest is a static byte-transformation and first-pass triage tool. Identify the boundary early:
+
+- ZIP, 7z, RAR, TAR, APK, JAR and Office containers — Zest can identify signatures and carve
+  ranges, but it does not list or extract members.
+- PCAP and PCAPNG — it can hash, carve and extract strings, but it does not reconstruct streams
+  or parse protocols.
+- PNG/JPEG and other media — it can inspect bytes and strings, but it does not parse EXIF,
+  recover appended files automatically, or perform LSB/steganography analysis.
+- PE/ELF and bytecode — it can expose strings and high-entropy regions, but it does not
+  disassemble, decompile or emulate code.
+- Passwords and cryptographic keys — it identifies hash shapes and applies known keys; it does
+  not crack passwords, solve RSA/math problems or recover repeating-cipher keys.
+
+At one of these boundaries, report the evidence gathered, preserve the original artefact, and
+hand off to the appropriate specialist tool instead of inventing a Zest operation.
 
 ## Reference
 

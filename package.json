@@ -13,7 +13,7 @@
   "scripts": {
     "build": "npm run build -w @zest/core && npm run build -w @zest/cli",
     "build:web": "npm run build -w @zest/web",
-    "test": "npm run test -w @zest/core",
+    "test": "npm run test -w @zest/core && node --test scripts/*.test.mjs",
     "dev": "npm run dev -w @zest/web",
     "docs": "npm run build -w @zest/core && node scripts/generate-docs.mjs",
     "publish:skill": "node scripts/publish-skill.mjs",
