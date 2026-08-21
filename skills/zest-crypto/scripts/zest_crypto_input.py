@@ -156,5 +156,6 @@ def _check_json_node_count(value: Any) -> None:
             raise InputBoundaryError("$", "input-too-complex")
         if isinstance(item, list):
             stack.extend(item)
-        elif isinstance(item, dict):
+            continue
+        if isinstance(item, dict):
             stack.extend(item.values())
