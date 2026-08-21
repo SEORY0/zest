@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, extname, join, relative, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const shippedExtensions = new Set(['.json', '.md', '.py', '.sage']);
@@ -111,12 +111,23 @@ function isInside(directory, path) {
   return pathFromDirectory !== '..' && !pathFromDirectory.startsWith('../') && !pathFromDirectory.startsWith('..\\');
 }
 
+function resolveMarkdownTarget(document, target) {
+  try {
+    return fileURLToPath(new URL(target, pathToFileURL(document)));
+  } catch (error) {
+    if (error instanceof TypeError || error instanceof URIError) {
+      assert.fail(`${document}: ${target} is an invalid local Markdown URL`);
+    }
+    throw error;
+  }
+}
+
 async function assertLocalMarkdownLinks(skillDirectory) {
   const files = await shippedFiles(skillDirectory);
   for (const document of files.filter((path) => extname(path) === '.md')) {
     const contents = await readFile(document, 'utf8');
     for (const target of relativeMarkdownTargets(contents)) {
-      const resolved = resolve(dirname(document), target);
+      const resolved = resolveMarkdownTarget(document, target);
       assert.equal(isInside(skillDirectory, resolved), true, `${document}: ${target} escapes the standalone skill`);
       assert.equal(existsSync(resolved), true, `${document}: ${target} is missing from the standalone skill`);
     }
@@ -165,6 +176,45 @@ test('zest-crypto rejects an escaping reference-style Markdown link', async () =
 
     // Then: the escaped target is rejected rather than silently ignored.
     await assert.rejects(check, /escapes the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects percent-encoded parent traversal with an in-package decoy', async () => {
+  // Given: an encoded parent link whose literal filesystem path exists inside the package.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  const decoyDirectory = join(skillDirectory, '%2e%2e');
+  await mkdir(decoyDirectory, { recursive: true });
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Encoded escape](%2e%2e/escape.md)\n', 'utf8');
+  await writeFile(join(decoyDirectory, 'escape.md'), 'decoy\n', 'utf8');
+
+  try {
+    // When: the package-boundary checker resolves the URL path.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: URL-normalized traversal is rejected despite the literal decoy.
+    await assert.rejects(check, /escapes the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects malformed percent encoding deterministically', async () => {
+  // Given: a malformed URL path whose literal filesystem path exists inside the package.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Malformed](bad%ZZ.md)\n', 'utf8');
+  await writeFile(join(skillDirectory, 'bad%ZZ.md'), 'decoy\n', 'utf8');
+
+  try {
+    // When: the package-boundary checker resolves the malformed URL path.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: malformed encoding is rejected with the checker-owned diagnostic.
+    await assert.rejects(check, /invalid local Markdown URL/);
   } finally {
     await rm(fixtureRoot, { force: true, recursive: true });
   }
