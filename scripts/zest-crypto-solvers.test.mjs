@@ -27,7 +27,10 @@ const jsonSuccessCases = [
   {
     name: 'ECDSA nonce reuse proves both signatures and the public key',
     script: 'ecdsa_nonce_reuse.py', fixture: 'ecdsa-nonce-reuse.json',
-    expected: { k: 77, private_scalar: 123, signatures_verified: 2 },
+    expected: {
+      k: 77, nonce_points_verified: 2, nonce_relation: 'same', nonce_signs: [1, 1],
+      private_scalar: 123, signatures_verified: 2,
+    },
   },
   {
     name: 'four-list Wagner search returns an exact modular list sum',

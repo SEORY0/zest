@@ -81,6 +81,7 @@ FACT_VALUE_TYPES: Dict[str, str] = {
     "signature.nonce_leak_orientation": "string",
     "signature.hnp_model": "string",
     "signature.hnp_parameter_bound_verified": "boolean",
+    "signature.nonce_projection_bound_verified": "boolean",
     "prng.family": "string",
     "prng.output_count": "integer",
     "prng.output_word_bits": "integer",

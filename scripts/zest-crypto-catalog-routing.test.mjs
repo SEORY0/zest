@@ -10,6 +10,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ranker = join(root, 'skills', 'zest-crypto', 'scripts', 'rank_attack_cards.py');
 const catalogPath = join(root, 'skills', 'zest-crypto', 'references', 'attack-cards.json');
 const casesPath = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json');
+const coastSourcePath = join(root, 'scripts', 'fixtures', 'zest-crypto', 'sources', 'coast-prime-degrees.json');
 
 function runRanker(fingerprintPath) {
   return new Promise((resolve, reject) => {
@@ -44,6 +45,53 @@ function entry(report, cardId) {
   assert.fail(`missing rank entry: ${cardId}`);
 }
 
+function observedFact(id, key, value, valueType, locator = 'source-derived') {
+  return {
+    id, key, value, value_type: valueType, status: 'observed',
+    evidence: { input_id: 'source', locator },
+  };
+}
+
+function fingerprint(caseId, facts, capabilities) {
+  return {
+    schema_version: 1,
+    case_id: caseId,
+    inputs: [{
+      id: 'source', path: 'inputs/source.py', sha256: '3'.repeat(64), media_type: 'text/x-python',
+    }],
+    facts,
+    capabilities,
+    constraints: { network: 'disabled', max_memory_mb: 4096, max_seconds: 3600 },
+  };
+}
+
+function hnpFingerprint(caseId, model, orientation, evidenceKey, evidenceValue) {
+  return fingerprint(caseId, [
+    observedFact('scheme', 'signature.scheme', 'ecdsa', 'string'),
+    observedFact('samples', 'signature.sample_count', 32, 'integer'),
+    observedFact('public-key', 'signature.public_key_present', true, 'boolean'),
+    observedFact('orientation', 'signature.nonce_leak_orientation', orientation, 'string'),
+    observedFact('model', 'signature.hnp_model', model, 'string'),
+    observedFact('bound', 'signature.hnp_parameter_bound_verified', true, 'boolean'),
+    observedFact('evidence', evidenceKey, evidenceValue, 'integer'),
+  ], [{ command: 'sage', available: true, version: 'test' }]);
+}
+
+function coastFingerprint(caseId, parameterToken) {
+  return fingerprint(caseId, [
+    observedFact('family', 'construction.canonical_family', 'paper.csidh.auxiliary-point-leak', 'string'),
+    observedFact('paper', 'construction.paper_ids', ['eprint:2018/383'], 'string_list'),
+    observedFact('anchors', 'construction.source_anchors', [
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/README.md:L11-L15',
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/chall.sage:L6-L16',
+    ], 'string_list'),
+    observedFact('parameters', 'construction.parameter_signature', [
+      'auxiliary-point-order-divisor-leak', parameterToken,
+    ], 'string_list'),
+    observedFact('toy', 'construction.toy_invariant_verified', true, 'boolean'),
+  ], [{ command: 'sage', available: true, version: 'test' }]);
+}
+
 function predicates(condition) {
   if (condition.fact) return [condition];
   if (condition.not) return predicates(condition.not);
@@ -52,12 +100,21 @@ function predicates(condition) {
 
 test('every challenge-specific route binds its exact immutable source anchors', async () => {
   const expected = {
-    'paper.matrix-product.trace-lattice': ['github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/MatProd/dist/chall.py:L6-L60'],
+    'paper.matrix-product.trace-lattice': [
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/MatProd/dist/chall.py:L6-L60',
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/MatProd/dist/chall.py:L199-L228',
+    ],
     'paper.stream-cipher.fca-lwpm': ['github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/Hyper512/dist/chall.py:L4-L64'],
-    'paper.ecdsa.lcg-nonce': ['github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64'],
+    'paper.ecdsa.lcg-nonce': [
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64',
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/solution/solve_lance_roy.sage:L8-L50',
+    ],
     'paper.frost.threshold-signature': ['github.com/project-sekai-ctf/sekaictf-2025@683dd81ae520581add40ec21c4819866e28cbde4/crypto/law-and-order/challenge/app/chall.py:L150-L311'],
     'paper.uov.wrapper-structure': ['github.com/project-sekai-ctf/sekaictf-2025@683dd81ae520581add40ec21c4819866e28cbde4/crypto/unfairy-ring/dist/chall.py:L10-L18'],
-    'paper.csidh.auxiliary-point-leak': ['github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/README.md:L11-L15'],
+    'paper.csidh.auxiliary-point-leak': [
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/README.md:L11-L15',
+      'github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/chall.sage:L6-L16',
+    ],
     'lattice.subset-sum.query-schedule': ['github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/mat347/dist/chall.py:L24-L55'],
     'stream.lfsr.known-plaintext': ['github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/lfstream/challenge/lfsr_crypt.py:L4-L45'],
     'symmetric.slide.periodic-round': [
@@ -97,6 +154,42 @@ test('ECLCG requires the pinned cross-modulus lift and orthogonal Stern bridge',
   assert.equal(entry(await rank(cases.eclcg_valid), 'paper.ecdsa.lcg-nonce').state, 'eligible');
   assert.equal(entry(await rank(cases.eclcg_same_modulus), 'paper.ecdsa.lcg-nonce').state, 'rejected');
   assert.equal(entry(await rank(cases.eclcg_unrelated_anchor), 'paper.ecdsa.lcg-nonce').state, 'rejected');
+  for (const sampleCount of [16, 4]) {
+    const insufficient = structuredClone(cases.eclcg_valid);
+    insufficient.case_id = `eclcg-insufficient-${sampleCount}-samples`;
+    insufficient.facts.find(({ key }) => key === 'signature.sample_count').value = sampleCount;
+    assert.equal(entry(await rank(insufficient), 'paper.ecdsa.lcg-nonce').state, 'rejected');
+  }
+  const failedBound = structuredClone(cases.eclcg_valid);
+  failedBound.case_id = 'eclcg-failed-projection-bound';
+  failedBound.facts.find(({ key }) => key === 'signature.nonce_projection_bound_verified').value = false;
+  assert.equal(entry(await rank(failedBound), 'paper.ecdsa.lcg-nonce').state, 'rejected');
+});
+
+test('HNP hard gates couple each source model to its own orientation and evidence', async () => {
+  const knownBits = hnpFingerprint('hnp-known-bits', 'known-bits', 'msb', 'signature.nonce_leak_bits', 8);
+  const bias = hnpFingerprint('hnp-bias', 'eprint-2019-023-bias', 'centered-bias', 'signature.nonce_bias_bound', 2);
+  const crossedKnownBits = hnpFingerprint(
+    'hnp-known-bits-crossed', 'known-bits', 'centered-bias', 'signature.nonce_bias_bound', 2,
+  );
+  const crossedBias = hnpFingerprint(
+    'hnp-bias-crossed', 'eprint-2019-023-bias', 'lsb', 'signature.nonce_leak_bits', 8,
+  );
+  assert.equal(entry(await rank(knownBits), 'signature.ecdsa.partial-nonce-hnp').state, 'eligible');
+  assert.equal(entry(await rank(bias), 'signature.ecdsa.partial-nonce-hnp').state, 'eligible');
+  assert.equal(entry(await rank(crossedKnownBits), 'signature.ecdsa.partial-nonce-hnp').state, 'rejected');
+  assert.equal(entry(await rank(crossedBias), 'signature.ecdsa.partial-nonce-hnp').state, 'rejected');
+});
+
+test('coast rank eligibility uses the 128-degree count from both pinned source lists', async () => {
+  const source = JSON.parse(await readFile(coastSourcePath, 'utf8'));
+  assert.equal(source.challenge_prime_degrees.length, 128);
+  assert.deepEqual(source.solution_prime_degrees, source.challenge_prime_degrees);
+  const parameterToken = `${source.challenge_prime_degrees.length}-prime-degree-tests`;
+  assert.equal(entry(await rank(coastFingerprint('coast-128-degrees', parameterToken)),
+    'paper.csidh.auxiliary-point-leak').state, 'eligible');
+  assert.equal(entry(await rank(coastFingerprint('coast-stale-124-degrees', '124-prime-degree-tests')),
+    'paper.csidh.auxiliary-point-leak').state, 'rejected');
 });
 
 test('CBC one-byte probe requires the declared worst-case budget under case constraints', async () => {
@@ -122,7 +215,7 @@ test('challenge-faithful null-template and wrapper procedures expose executable 
       procedures: ['solver-outline', 'verify-xor-public-map'],
     },
     'paper.csidh.auxiliary-point-leak': {
-      parameters: ['auxiliary-point-order-divisor-leak', '124-prime-degree-tests'],
+      parameters: ['auxiliary-point-order-divisor-leak', '128-prime-degree-tests'],
       procedures: ['solver-outline', 'replay-isogeny-degree-vector'],
     },
   };
@@ -152,4 +245,26 @@ test('HNP and bounded RSA/signature variants expose honest machine contracts', a
   assert.equal(cbc.citations.some(({ url }) => url === 'https://www.iacr.org/archive/eurocrypt2002/23320530/cbc02_e02d.pdf'), true);
   const wagner = cards.find(({ id }) => id === 'paper.wagner.generalized-birthday');
   assert.equal(wagner.examples.some(({ challenge_id: id, inference_level: level }) => id === 'hitcon-2025-pedantic' && level === 'variant'), true);
+});
+
+test('source-derived algorithms cite exact implementation and output spans', async () => {
+  const cards = JSON.parse(await readFile(catalogPath, 'utf8'));
+  const expectedUrls = {
+    'paper.matrix-product.trace-lattice': [
+      'https://github.com/maple3142/My-CTF-Challenges/blob/7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/MatProd/dist/chall.py#L199-L228',
+    ],
+    'paper.csidh.auxiliary-point-leak': [
+      'https://github.com/maple3142/My-CTF-Challenges/blob/7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/chall.sage#L6-L16',
+      'https://github.com/maple3142/My-CTF-Challenges/blob/7b3e786a2c20812f4da23536c7817bdfe8113dd6/ImaginaryCTF%202024/coast/solve.sage#L7-L17',
+    ],
+    'symmetric.slide.periodic-round': [
+      'https://github.com/BSidesSF/ctf-2026-release/blob/68ee0e460eb572aaec17f082071f8ebf1d6f7330/tokencrypt/solution/recover_round.py#L134-L178',
+    ],
+  };
+  for (const [cardId, urls] of Object.entries(expectedUrls)) {
+    const card = cards.find(({ id }) => id === cardId);
+    assert.notEqual(card, undefined);
+    const actual = new Set(card.citations.map(({ url }) => url));
+    urls.forEach((url) => assert.equal(actual.has(url), true, `${cardId}: ${url}`));
+  }
 });

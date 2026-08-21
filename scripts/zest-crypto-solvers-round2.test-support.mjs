@@ -51,6 +51,26 @@ test('ECDSA verifies an exact NIST P-256 reused-nonce construction', async () =>
   );
 });
 
+test('ECDSA verifies the opposite-nonce variant on exact NIST P-256 parameters', async () => {
+  // Given: the same audited P-256 construction with the second scalar normalized to q-s.
+  const args = [join(templates, 'ecdsa_nonce_reuse.py'),
+    join(fixtures, 'ecdsa-p256-nonce-reuse-opposite.json')];
+
+  // When: the solver checks both repeated-r nonce-point signs.
+  const document = parseSuccess(await run(python, args));
+
+  // Then: the P-256 allowlist and opposite relation both remain fully proved.
+  assert.deepEqual(
+    {
+      k: document.k,
+      nonceRelation: document.nonce_relation,
+      nonceSigns: document.proof.nonce_signs,
+      privateScalar: document.private_scalar,
+    },
+    { k: 77, nonceRelation: 'opposite', nonceSigns: [1, -1], privateScalar: 123 },
+  );
+});
+
 test('ECDSA rejects a mutated large standard domain outside the audited tuple allowlist', async () => {
   // Given: P-256-sized values with a one-unit mutation to the standard curve coefficient.
   const args = [join(templates, 'ecdsa_nonce_reuse.py'), join(fixtures, 'ecdsa-p256-mutated-domain.json')];

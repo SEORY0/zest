@@ -21,6 +21,7 @@ MAX_JSON_DEPTH = 32
 MAX_JSON_INTEGER_DIGITS = 4096
 # Canonical (p, a, b, gx, gy, order) tuples; other large domains are unsupported.
 KNOWN_STANDARD_DOMAINS = frozenset(((0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F, 0, 7, 55066263022277343669578718895168534326250603453777594175500187360389116729240, 32670510020758816978083085130507043184471273380659243275938904335757337482424, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141), (115792089210356248762697446949407573530086143415290314195533631308867097853951, 115792089210356248762697446949407573530086143415290314195533631308867097853948, 41058363725152142129326129780047268409114441015993725554835256314039467401291, 48439561293906451759052585252797914202762949526041747995844080717082404635286, 36134250956749795798585127919587881956611106672985015071877198253568414405109, 115792089210356248762697446949407573529996955224135760342422259061068512044369)))
+NONCE_RELATIONS = ((1, "same"), (-1, "opposite"))
 
 
 class SolverError(Exception):
@@ -235,6 +236,41 @@ def _parse_signature(raw, order):
     return r, s, z % order
 
 
+def _candidate_proof(signatures, nonce, second_nonce_sign, private_scalar, generator, public_key, curve, order):
+    if not 0 < nonce < order or not 0 < private_scalar < order:
+        return None
+    if _scalar_multiply(private_scalar, generator, curve) != public_key:
+        return None
+    nonce_signs = (1, second_nonce_sign)
+    nonce_points = []
+    for (r, s, z), nonce_sign in zip(signatures, nonce_signs):
+        signature_nonce = nonce * nonce_sign % order
+        nonce_point = _scalar_multiply(signature_nonce, generator, curve)
+        if nonce_point is None or nonce_point[0] % order != r:
+            return None
+        inverse_s = _inverse(s, order, "non-invertible-signature")
+        verifier_point = _point_add(
+            _scalar_multiply((z * inverse_s) % order, generator, curve),
+            _scalar_multiply((r * inverse_s) % order, public_key, curve),
+            curve,
+        )
+        private_equation = (s * signature_nonce - z - r * private_scalar) % order == 0
+        if not private_equation or verifier_point != nonce_point:
+            return None
+        nonce_points.append(nonce_point)
+    p = curve[0]
+    expected_second_point = nonce_points[0] if second_nonce_sign == 1 else (nonce_points[0][0], -nonce_points[0][1] % p)
+    if nonce_points[1] != expected_second_point:
+        return None
+    return {
+        "nonce_points_verified": len(nonce_points),
+        "nonce_relation_matches": True,
+        "nonce_signs": nonce_signs,
+        "public_key_matches": True,
+        "signatures_verified": len(signatures),
+    }
+
+
 def _solve(document):
     curve_document = document.get("curve")
     p = _integer(curve_document, "p", 5)
@@ -262,29 +298,33 @@ def _solve(document):
     first, second = signatures
     if first[0] != second[0]:
         raise SolverError("repeated-r-required")
-    nonce = (first[2] - second[2]) * _inverse(first[1] - second[1], order, "non-invertible-signature") % order
-    private_scalar = (first[1] * nonce - first[2]) * _inverse(first[0], order, "non-invertible-signature") % order
-    nonce_point = _scalar_multiply(nonce, generator, curve)
-    signatures_verified = 0
-    for r, s, z in signatures:
-        equation = (s * nonce - z - r * private_scalar) % order == 0
-        inverse_s = _inverse(s, order, "non-invertible-signature")
-        verifier_point = _point_add(
-            _scalar_multiply((z * inverse_s) % order, generator, curve),
-            _scalar_multiply((r * inverse_s) % order, public_key, curve),
-            curve,
+    if first == second:
+        raise SolverError("ambiguous-nonce-relation")
+    inverse_r = _inverse(first[0], order, "non-invertible-signature")
+    candidates = []
+    for second_nonce_sign, nonce_relation in NONCE_RELATIONS:
+        denominator = (first[1] - second_nonce_sign * second[1]) % order
+        if math.gcd(denominator, order) != 1:
+            continue
+        nonce = (first[2] - second[2]) * _inverse(denominator, order, "non-invertible-signature") % order
+        private_scalar = (first[1] * nonce - first[2]) * inverse_r % order
+        proof = _candidate_proof(
+            signatures, nonce, second_nonce_sign, private_scalar,
+            generator, public_key, curve, order,
         )
-        if equation and verifier_point is not None and verifier_point[0] % order == r:
-            signatures_verified += 1
-    public_key_matches = _scalar_multiply(private_scalar, generator, curve) == public_key
-    nonce_matches = nonce_point is not None and nonce_point[0] % order == first[0]
-    if signatures_verified != 2 or not public_key_matches or not nonce_matches:
+        if proof is not None:
+            candidates.append((nonce, private_scalar, nonce_relation, proof))
+    if len(candidates) > 1:
+        raise SolverError("ambiguous-nonce-relation")
+    if not candidates:
         raise SolverError("proof-mismatch")
+    nonce, private_scalar, nonce_relation, proof = candidates[0]
     return {
         "construction": "ecdsa-reused-nonce",
         "k": nonce,
+        "nonce_relation": nonce_relation,
         "private_scalar": private_scalar,
-        "proof": {"public_key_matches": True, "signatures_verified": signatures_verified},
+        "proof": proof,
         "verified": True,
     }
 

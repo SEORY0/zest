@@ -41,3 +41,55 @@ test('LFSR state-word schedule rejects non-byte-aligned widths structurally', as
   // Then: both fail with the stable error contract and no traceback.
   results.forEach((result) => assertFailure(result, 'invalid-arguments'));
 });
+
+test('ECDSA recovers the key when the second repeated-r signature uses q minus k', async () => {
+  // Given: two valid secp256k1 signatures whose nonce points are exact opposites.
+  const args = [join(templates, 'ecdsa_nonce_reuse.py'),
+    join(fixtures, 'ecdsa-nonce-reuse-opposite.json')];
+
+  // When: the standalone solver evaluates both equal-r nonce relations.
+  const document = parseSuccess(await run(python, args));
+
+  // Then: the first nonce and private scalar are exact, with explicit opposite signs.
+  assert.deepEqual(
+    {
+      k: document.k,
+      noncePoints: document.proof.nonce_points_verified,
+      nonceRelation: document.nonce_relation,
+      nonceSigns: document.proof.nonce_signs,
+      privateScalar: document.private_scalar,
+      signatures: document.proof.signatures_verified,
+    },
+    {
+      k: 77, noncePoints: 2, nonceRelation: 'opposite', nonceSigns: [1, -1],
+      privateScalar: 123, signatures: 2,
+    },
+  );
+});
+
+test('ECDSA rejects duplicate signatures that cannot determine a nonce relation', async () => {
+  // Given: the same valid signature repeated twice, with no independent second equation.
+  const args = [join(templates, 'ecdsa_nonce_reuse.py'),
+    join(fixtures, 'ecdsa-nonce-reuse-ambiguous.json')];
+
+  // When: both candidate nonce relations are considered.
+  const result = await run(python, args);
+
+  // Then: the solver reports underdetermination instead of a key or a traceback.
+  assertFailure(result, 'ambiguous-nonce-relation');
+});
+
+test('ECDSA skips a noninvertible same-nonce denominator and proves the opposite relation', async () => {
+  // Given: a valid opposite-nonce pair with s1=s2, so only the opposite denominator is usable.
+  const args = [join(templates, 'ecdsa_nonce_reuse.py'),
+    join(fixtures, 'ecdsa-nonce-reuse-opposite-fallback.json')];
+
+  // When: candidate relations are evaluated independently.
+  const document = parseSuccess(await run(python, args));
+
+  // Then: failure of the same-nonce denominator cannot mask the verified opposite candidate.
+  assert.deepEqual(
+    { k: document.k, nonceRelation: document.nonce_relation, privateScalar: document.private_scalar },
+    { k: 77, nonceRelation: 'opposite', privateScalar: 123 },
+  );
+});

@@ -59,11 +59,12 @@
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
       {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L12-L22"}},
-      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "L31-L64"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 17, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "L31-L64"}},
       {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-p-observed-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
       {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
-      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64", "github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/solution/solve_lance_roy.sage:L8-L50"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "challenge:L25-L64; solution:L8-L50"}},
       {"id": "parameters", "key": "construction.parameter_signature", "value": ["lcg-modulus-p-differs-from-ecdsa-order-q", "bounded-mod-p-to-mod-q-nonce-lifts", "orthogonal-lattice-stern-bridge"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "source and author solution"}},
+      {"id": "projection-bound", "key": "signature.nonce_projection_bound_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "solve_lance_roy.sage:L20-L50"}},
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
@@ -75,11 +76,12 @@
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
       {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
-      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 17, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
       {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "generic model"}},
       {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
       {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
       {"id": "parameters", "key": "construction.parameter_signature", "value": ["same-modulus-polynonce-elimination"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "generic model"}},
+      {"id": "projection-bound", "key": "signature.nonce_projection_bound_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "generic model control"}},
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "generic toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
@@ -91,11 +93,12 @@
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
       {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
-      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 17, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
       {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-p-observed-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "recurrence"}},
       {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
       {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/unrelated/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/wrong.py:L1-L2"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L1-L2"}},
       {"id": "parameters", "key": "construction.parameter_signature", "value": ["lcg-modulus-p-differs-from-ecdsa-order-q", "bounded-mod-p-to-mod-q-nonce-lifts", "orthogonal-lattice-stern-bridge"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "source and author solution"}},
+      {"id": "projection-bound", "key": "signature.nonce_projection_bound_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "author solution control"}},
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],

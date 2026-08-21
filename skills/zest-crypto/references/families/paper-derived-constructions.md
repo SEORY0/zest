@@ -31,7 +31,8 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   catalog's routing label.
 - **Pinned challenge example:** HITCON CTF 2024 MatProd,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2024/MatProd/dist/chall.py:L6-L60`.
+  `HITCON CTF 2024/MatProd/dist/chall.py:L6-L60` for the construction and
+  `chall.py:L199-L228` for the concrete direct/alternating parameters and serialized output.
 
 ## `paper.stream-cipher.fca-lwpm`
 
@@ -62,16 +63,19 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
 
 ## `paper.ecdsa.lcg-nonce`
 
-- **Observable signals:** Aligned ECDSA signatures whose integer nonce states evolve
-  modulo a 311-bit `p` but are observed modulo secp256k1 order `q`, with `p!=q`.
+- **Observable signals:** The pinned set of 17 aligned ECDSA signatures whose integer
+  nonce states evolve modulo a 311-bit `p` but are observed modulo secp256k1 order `q`,
+  with `p!=q`.
 - **Equations:** Adjacent ECDSA equations expose nonce differences modulo `q`; short
   integer-orthogonal vectors bridge those residues to bounded LCG states modulo `p`.
-- **Hard assumptions:** The source proves `p!=q`, nonce lifts satisfy the author solver's
-  Stern inequality, and a faithful cross-modulus toy instance recovers a known `d`.
+- **Hard assumptions:** The source proves `p!=q`; all 17 signatures are present; the
+  author projection uses `n=14`, `t=4`; `||lambda||_1*2^high_bits <
+  2^(lcg_bits*(1-1/t))` is explicitly verified; and a faithful cross-modulus toy instance
+  recovers a known `d`. Four generic recurrence samples do not satisfy this pinned route.
 - **Cheapest falsifier:** On a reduced `p!=q` instance recover one orthogonal vector,
   reconstruct `p` and the LCG multiplier, and replay both modulus layers.
-- **Expected cost:** High; one bounded orthogonal-lattice stage, resultants, a polynomial
-  gcd, and one mixed-modulus lattice whose dimensions follow the captured samples.
+- **Expected cost:** High; the pinned `n=14`, `t=4` orthogonal-lattice stage after its
+  checked Stern bound, resultants, a polynomial gcd, and one bounded mixed-modulus lattice.
 - **Solver adaptation:** Follow the author route: derive adjacent nonce-difference
   vectors, recover `p` via resultants and `a` via polynomial gcd, then solve the bounded
   mixed-modulus lattice for `d`. Never apply the recurrence directly modulo `q`.
@@ -86,7 +90,8 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   pinned author solution and must be stated separately.
 - **Pinned challenge example:** HITCON CTF 2024 ECLCG,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2024/ECLCG/dist/chall.py:L25-L64` and `README.md:L21-L90`.
+  `HITCON CTF 2024/ECLCG/dist/chall.py:L25-L64`, `README.md:L21-L90`, and
+  `solution/solve_lance_roy.sage:L8-L50` for the exact projection and bound.
 
 ## `paper.wagner.generalized-birthday`
 
@@ -170,12 +175,12 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
 - **Observable signals:** A curve-plus-point public key where the base point has order
   `p+1` and each selected `ell`-isogeny removes `ell` from the transported point order.
 - **Equations:** Compute `cf=(p+1)/ord(G_pub)` and set support bit
-  `e_i=1 iff ell_i divides cf` for each of 124 small primes.
+  `e_i=1 iff ell_i divides cf` for each of 128 small primes.
 - **Hard assumptions:** Exponents lie in `{-1,0,1}` and the source defect makes sign
   immaterial, so the support vector reproduces the public action.
-- **Cheapest falsifier:** Compute one point order and verify all 124 divisibility bits by
+- **Cheapest falsifier:** Compute one point order and verify all 128 divisibility bits by
   replaying both published curve-plus-point tuples.
-- **Expected cost:** One point-order computation, 124 divisibility tests, one bounded
+- **Expected cost:** One point-order computation, 128 divisibility tests, one bounded
   action replay, and one shared-secret derivation; no backtracking.
 - **Solver adaptation:** Recover the support vector, replay it, derive `j(E)+x(G)`, then
   derive the AES key and decrypt the ciphertext.
@@ -188,7 +193,8 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   The auxiliary leak is challenge-derived.
 - **Pinned challenge example:** ImaginaryCTF 2024 coast,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `ImaginaryCTF 2024/coast/README.md:L11-L15` and `coast/solve.sage:L52-L69`.
+  `ImaginaryCTF 2024/coast/README.md:L11-L15`, `coast/chall.sage:L6-L16`,
+  `coast/solve.sage:L7-L17`, and the recovery at `coast/solve.sage:L52-L69`.
 
 ## `symmetric.slide.periodic-round`
 
@@ -214,7 +220,8 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
 - **Pinned challenge example:** BSidesSF 2026 tokencrypt,
   `BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330`,
   `tokencrypt/challenge/src/tc_demo.py:L12-L175` and
-  `tokencrypt/challenge/src/tokencrypt.py:L11-L326`.
+  `tokencrypt/challenge/src/tokencrypt.py:L11-L326`; the exact `2^16` search, 25-vector
+  affine solve, and inverse are in `tokencrypt/solution/recover_round.py:L134-L178`.
 
 ## `symmetric.rotor.group-conjugacy`
 

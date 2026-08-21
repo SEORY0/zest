@@ -35,10 +35,13 @@ requires a concrete equation, sufficient bound, and faithful reduced check.
   and either exact MSB/LSB leakage or a measured bias that matches a named bias model.
 - **Equations:** From `s_i*k_i=z_i+r_i*d mod q`, normalize the known nonce part to a
   modular approximation of `d`; encode the bounded errors in one documented HNP lattice.
-- **Hard assumptions:** Record `known-bits` or `eprint-2019-023-bias`, the MSB/LSB or
-  centered-bias orientation, and a derived parameter-bound proof combining sample count,
+- **Hard assumptions:** Choose exactly one coupled branch. The known-bit branch requires
+  `hnp_model=known-bits`, `orientation in {msb,lsb}`, positive `nonce_leak_bits`, and a
+  parameter-bound proof. The bias branch requires
+  `hnp_model=eprint-2019-023-bias`, `orientation=centered-bias`, positive
+  `nonce_bias_bound`, and its own parameter-bound proof. Both proofs combine sample count,
   leak/bias size, group size, independence, and lattice embedding. There is no universal
-  four-sample floor, and known bits are not interchangeable with arbitrary positive bias.
+  four-sample floor, and the two source models are not interchangeable.
 - **Cheapest falsifier:** Derive all approximations symbolically and recover a known key
   in a reduced instance with the same bit orientation and lattice scaling.
 - **Expected cost:** High; one stated LLL/BKZ schedule and a bounded closest-vector or
