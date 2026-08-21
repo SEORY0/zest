@@ -186,7 +186,7 @@ docs cannot drift from the behaviour.
 ```console
 $ npm test
 # core: 219 passed
-# scripts: 168 passed, 1 skipped (Sage unavailable)
+# scripts: 176 passed, 1 skipped (Sage unavailable)
 ```
 
 ## Design
