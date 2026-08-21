@@ -125,6 +125,41 @@ def _recover(observed, width, max_candidates, max_steps):
     return matches[0]
 
 
+def _word_keystream(initial_state, tap_mask, width, byte_count):
+    word_bytes = width // 8
+    state = initial_state
+    stream = bytearray()
+    while len(stream) < byte_count:
+        stream.extend(state.to_bytes(word_bytes, byteorder="big"))
+        _output, state = _step(state, tap_mask, width)
+    return bytes(stream[:byte_count])
+
+
+def _recover_word_schedule(observed, width, max_candidates, max_steps):
+    if width % 8:
+        raise SolverError("invalid-arguments")
+    word_bytes = width // 8
+    words = [int.from_bytes(observed[offset : offset + word_bytes], byteorder="big")
+             for offset in range(0, len(observed) - word_bytes + 1, word_bytes)]
+    if len(words) < 2:
+        raise SolverError("no-solution")
+    if max_candidates < 1 or len(words) - 1 > max_steps:
+        raise SolverError("work-bound-exceeded")
+    candidates = {next_state ^ (state >> 1)
+                  for state, next_state in zip(words, words[1:]) if state & 1}
+    if not candidates:
+        raise SolverError("ambiguous-solution")
+    if len(candidates) != 1:
+        raise SolverError("no-solution")
+    tap_mask = next(iter(candidates))
+    if tap_mask == 0:
+        raise SolverError("ambiguous-solution")
+    if any(_step(state, tap_mask, width)[1] != next_state
+           for state, next_state in zip(words, words[1:])):
+        raise SolverError("no-solution")
+    return words[0], tap_mask
+
+
 def _solve(ciphertext, known_plaintext, expected_digest, width, max_candidates, max_steps):
     if len(ciphertext) > 1_000_000 or len(known_plaintext) > len(ciphertext):
         raise SolverError("invalid-input")
@@ -151,16 +186,57 @@ def _solve(ciphertext, known_plaintext, expected_digest, width, max_candidates, 
     }
 
 
+def _solve_word_schedule(ciphertext, known_plaintext, expected_digest, width, max_candidates, max_steps):
+    if len(ciphertext) > 1_000_000 or len(known_plaintext) > len(ciphertext):
+        raise SolverError("invalid-input")
+    if len(expected_digest) != 64 or any(character not in LOWER_HEX for character in expected_digest):
+        raise SolverError("invalid-arguments")
+    if width < 8 or width % 8:
+        raise SolverError("invalid-arguments")
+    word_bytes = width // 8
+    block_count = (len(ciphertext) + word_bytes - 1) // word_bytes
+    transition_count = max(0, len(known_plaintext) // word_bytes - 1)
+    if block_count + transition_count > max_steps:
+        raise SolverError("work-bound-exceeded")
+    observed = bytes(left ^ right for left, right in zip(ciphertext, known_plaintext))
+    initial_state, tap_mask = _recover_word_schedule(observed, width, max_candidates, max_steps)
+    stream = _word_keystream(initial_state, tap_mask, width, len(ciphertext))
+    plaintext = bytes(left ^ right for left, right in zip(ciphertext, stream))
+    known_prefix_replayed = plaintext[: len(known_plaintext)] == known_plaintext
+    ciphertext_replayed = bytes(left ^ right for left, right in zip(plaintext, stream)) == ciphertext
+    digest = hashlib.sha256(plaintext).hexdigest()
+    if not known_prefix_replayed or not ciphertext_replayed or digest != expected_digest:
+        raise SolverError("proof-mismatch")
+    return {
+        "construction": "galois-lfsr-known-plaintext",
+        "initial_state": initial_state,
+        "plaintext_hex": plaintext.hex(),
+        "plaintext_sha256": digest,
+        "proof": {"ciphertext_replayed": True, "known_prefix_replayed": True},
+        "schedule": "state-word-be",
+        "tap_mask": tap_mask,
+        "verified": True,
+        "width": width,
+    }
+
+
 def main(arguments):
-    if len(arguments) != 6:
+    if len(arguments) not in (6, 7):
         return _failure("invalid-arguments")
     try:
         ciphertext = _read_hex(Path(arguments[0]))
         known_plaintext = _read_hex(Path(arguments[1]))
-        width = _parse_small_integer(arguments[3], 2, 12)
+        schedule = arguments[6] if len(arguments) == 7 else "bitstream-lsb"
+        if schedule not in ("bitstream-lsb", "state-word-be"):
+            raise SolverError("invalid-arguments")
+        width_limit = 64 if schedule == "state-word-be" else 12
+        width = _parse_small_integer(arguments[3], 2, width_limit)
         max_candidates = _parse_small_integer(arguments[4], 1, 2_000_000)
         max_steps = _parse_small_integer(arguments[5], 1, 100_000_000)
-        result = _solve(ciphertext, known_plaintext, arguments[2], width, max_candidates, max_steps)
+        if schedule == "state-word-be":
+            result = _solve_word_schedule(ciphertext, known_plaintext, arguments[2], width, max_candidates, max_steps)
+        else:
+            result = _solve(ciphertext, known_plaintext, arguments[2], width, max_candidates, max_steps)
     except SolverError as error:
         return _failure(error.code)
     _emit(result)

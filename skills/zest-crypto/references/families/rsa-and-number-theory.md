@@ -22,10 +22,8 @@ Apply the six [literature and adaptation gates](../literature.md) and keep the
 - **Proof:** Verify `pq=n`, `ed=1 mod (p-1)(q-1)`, and decrypt/re-encrypt the ciphertext.
 - **Primary citation:** Wiener, *Cryptanalysis of short RSA secret exponents*,
   DOI `10.1109/18.54902`, 1990.
-- **Pinned challenge example:** Zest synthetic fixture
-  `SEORY0/zest@d22a8082aafdcba72c643b913c95b7a448b09a97`,
-  `scripts/fixtures/zest-crypto/solvers/rsa-wiener.json`; it proves template behavior,
-  not external challenge prevalence.
+- **Local package example:** `assets/solver-templates/rsa_wiener.py:L1-L241` proves the
+  packaged implementation boundary; it is not represented as a remote challenge pin.
 
 ## `rsa.common-modulus.coprime-exponents`
 
@@ -40,15 +38,14 @@ Apply the six [literature and adaptation gates](../literature.md) and keep the
 - **Expected cost:** Low; one extended gcd, at most two inverses, and two exponentiations.
 - **Solver adaptation:** Use `assets/solver-templates/rsa_common_modulus.py` with exactly
   two exponents/ciphertexts and the scalar modulus.
-- **Failure interpretation:** A non-unit ciphertext may reveal a factor of `n`; record
-  that as a factorization route. Non-coprime exponents or different messages reject the
-  direct common-modulus equation.
+- **Failure interpretation:** The bundled template stops with
+  `non-invertible-ciphertext`; it does not emit factor evidence. A caller may separately
+  compute and prove a non-trivial gcd route. Non-coprime exponents or different messages
+  reject the direct common-modulus equation.
 - **Proof:** Check `m^e1=c1 mod n` and `m^e2=c2 mod n`.
 - **Primary citation:** DeLaurentis, *A further weakness in the common modulus protocol
   for the RSA cryptoalgorithm*, DOI `10.1080/0161-118491859060`, 1984.
-- **Pinned challenge example:** Zest synthetic fixture
-  `SEORY0/zest@d22a8082aafdcba72c643b913c95b7a448b09a97`,
-  `scripts/fixtures/zest-crypto/solvers/rsa-common-modulus.json`.
+- **Local package example:** `assets/solver-templates/rsa_common_modulus.py:L1-L202`.
 
 ## `rsa.hastad.broadcast`
 
@@ -62,24 +59,25 @@ Apply the six [literature and adaptation gates](../literature.md) and keep the
 - **Expected cost:** Low; bounded CRT product, exact integer root, and public equations.
 - **Solver adaptation:** Use `assets/solver-templates/rsa_hastad.py`; set an explicit
   maximum root size and retain the modulus-count/product caps.
-- **Failure interpretation:** A shared factor changes the attack to factorization. An
-  inexact root rejects direct broadcast recovery; never round it.
+- **Failure interpretation:** The bundled template stops with `non-coprime-moduli`; it
+  does not return factor evidence. A separately proved shared gcd may route to
+  factorization. An inexact root rejects direct broadcast recovery; never round it.
 - **Proof:** Require `m^3` to equal the CRT integer before reduction and reproduce every
   ciphertext modulo its modulus.
 - **Primary citation:** Håstad, *Solving simultaneous modular equations of low degree*,
   DOI `10.1137/0217019`, 1988.
-- **Pinned challenge example:** Zest synthetic fixture
-  `SEORY0/zest@d22a8082aafdcba72c643b913c95b7a448b09a97`,
-  `scripts/fixtures/zest-crypto/solvers/rsa-hastad.json`.
+- **Local package example:** `assets/solver-templates/rsa_hastad.py:L1-L223`.
 
 ## `rsa.franklin-reiter.related-message`
 
-- **Observable signals:** One modulus, a small public exponent, two ciphertexts, and an
-  explicit known affine relation `m2=a*m1+b mod n`.
+- **Observable signals:** One modulus, public exponent in the deliberately bounded set
+  `{3,5,7}`, two ciphertexts, and an explicit known affine relation
+  `m2=a*m1+b mod n`.
 - **Equations:** In `(Z/nZ)[X]`, use `f1=X^e-c1` and
   `f2=(aX+b)^e-c2`; the expected monic gcd is `X-m1`.
-- **Hard assumptions:** The relation and alignment are exact, `a` is usable in the
-  stated relation, and modular polynomial gcd exposes a linear factor.
+- **Hard assumptions:** The relation and alignment are exact, `e` is one of `3,5,7`,
+  `a` is usable in the stated relation, and the modular polynomial gcd exposes a linear
+  factor. This card makes no claim for arbitrary “small” exponents.
 - **Cheapest falsifier:** Compute a degree-at-most-seven gcd and reject a non-linear gcd
   or a root that fails either ciphertext equation.
 - **Expected cost:** Medium; small-degree polynomial arithmetic over a composite ring.

@@ -31,7 +31,7 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   catalog's routing label.
 - **Pinned challenge example:** HITCON CTF 2024 MatProd,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2024/MatProd/dist/chall.py`.
+  `HITCON CTF 2024/MatProd/dist/chall.py:L6-L60`.
 
 ## `paper.stream-cipher.fca-lwpm`
 
@@ -58,33 +58,35 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   multiples using lattices*, ePrint `2007/423`, 2007.
 - **Pinned challenge example:** HITCON CTF 2024 Hyper512,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2024/Hyper512/dist/chall.py`.
+  `HITCON CTF 2024/Hyper512/dist/chall.py:L4-L64`.
 
 ## `paper.ecdsa.lcg-nonce`
 
-- **Observable signals:** At least four aligned ECDSA signatures, an exact modular nonce
-  recurrence, ePrint 2023/305, and pinned source showing how nonces enter signing.
-- **Equations:** For every sample,
-  `k_i=(z_i+r_i*d)*s_i^(-1) mod q`; substitute these affine functions of `d` into the
-  observed LCG or higher-degree recurrence and eliminate unknown recurrence coefficients.
-- **Hard assumptions:** Signatures are valid, recurrence/order/sample count match the
-  selected elimination, and a faithful toy instance recovers a known `d`.
-- **Cheapest falsifier:** Substitute toy signatures into the exact recurrence and demand
-  that the resulting polynomial has the known private scalar as a root.
-- **Expected cost:** High; one bounded finite-field polynomial-root or lattice stage with
-  degree/dimension derived from recurrence and sample count.
-- **Solver adaptation:** Implement the ePrint 2023/305 ECDSA equations, solve only the
-  declared polynomial degree, and verify every candidate against public key and recurrence.
+- **Observable signals:** Aligned ECDSA signatures whose integer nonce states evolve
+  modulo a 311-bit `p` but are observed modulo secp256k1 order `q`, with `p!=q`.
+- **Equations:** Adjacent ECDSA equations expose nonce differences modulo `q`; short
+  integer-orthogonal vectors bridge those residues to bounded LCG states modulo `p`.
+- **Hard assumptions:** The source proves `p!=q`, nonce lifts satisfy the author solver's
+  Stern inequality, and a faithful cross-modulus toy instance recovers a known `d`.
+- **Cheapest falsifier:** On a reduced `p!=q` instance recover one orthogonal vector,
+  reconstruct `p` and the LCG multiplier, and replay both modulus layers.
+- **Expected cost:** High; one bounded orthogonal-lattice stage, resultants, a polynomial
+  gcd, and one mixed-modulus lattice whose dimensions follow the captured samples.
+- **Solver adaptation:** Follow the author route: derive adjacent nonce-difference
+  vectors, recover `p` via resultants and `a` via polynomial gcd, then solve the bounded
+  mixed-modulus lattice for `d`. Never apply the recurrence directly modulo `q`.
 - **Failure interpretation:** A failed recurrence equation rejects the mapping. Repeated
   `r` values route first to exact nonce reuse.
-- **Proof:** Verify `dG=Q`, every ECDSA signature, and every reconstructed nonce transition.
+- **Proof:** Verify `dG=Q`, integer states modulo `p`, their ECDSA reductions modulo `q`,
+  and every lift bound.
 - **Primary citation:** Bellare, Goldwasser, and Micciancio, *Pseudo-random generators
   within cryptographic applications: the DSS case* (CRYPTO 1997) is a DSS theorem only.
-  Macchetti, *A novel related nonce attack for ECDSA*, ePrint `2023/305`, supplies the
-  ECDSA mapping. The lift obligation must be written, never implied.
+  Macchetti, *A novel related nonce attack for ECDSA*, ePrint `2023/305`, covers the
+  generic same-modulus family. ECLCG's `p!=q` orthogonal/Stern bridge comes from its
+  pinned author solution and must be stated separately.
 - **Pinned challenge example:** HITCON CTF 2024 ECLCG,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2024/ECLCG/dist/chall.py`.
+  `HITCON CTF 2024/ECLCG/dist/chall.py:L25-L64` and `README.md:L21-L90`.
 
 ## `paper.wagner.generalized-birthday`
 
@@ -108,10 +110,11 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
 - **Primary citation:** Wagner, *A generalized birthday problem*, CRYPTO 2002, DOI
   `10.1007/3-540-45708-9_19`, proceedings PDF
   `https://www.iacr.org/archive/crypto2002/24420288/24420288.pdf`.
-- **Pinned challenge example:** HITCON CTF 2025 Pedantic,
+- **Pinned challenge example:** HITCON CTF 2025 Paranoid,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `HITCON CTF 2025/Pedantic/src/server.py`. MAT347 is a negative example: its adaptive
-  query schedule explicitly rejects naive independent-list routing.
+  `HITCON CTF 2025/Paranoid/README.md:L15-L31`, explicitly supplies one independent list
+  per round. Pedantic is only a variant/negative example: its fixed LCG author route uses
+  a fixed point plus affine CVP/LLL. MAT347 is also negative because its queries are adaptive.
 
 ## `paper.frost.threshold-signature`
 
@@ -136,47 +139,46 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   not a generic exploit paper.
 - **Pinned challenge example:** SekaiCTF 2025 law-and-order,
   `project-sekai-ctf/sekaictf-2025@683dd81ae520581add40ec21c4819866e28cbde4`,
-  `crypto/law-and-order/challenge/app/chall.py`.
+  `crypto/law-and-order/challenge/app/chall.py:L150-L311`.
 
 ## `paper.uov.wrapper-structure`
 
-- **Observable signals:** UOV public quadratic maps plus source-observed key reuse,
-  ring/XOR composition, or another wrapper relation not present in bare UOV.
-- **Equations:** Write the exact public maps and derive only identities following from
-  degree two and the observed wrapper, such as controlled differences or rank/triangular
-  relations.
-- **Hard assumptions:** Field, dimensions, public maps, wrapper combination, and verifier
-  are exact; a reduced wrapper accepts a generated toy witness.
-- **Cheapest falsifier:** Evaluate a toy UOV map and wrapper, compute the proposed
-  difference/rank relation, and run the wrapper verifier.
-- **Expected cost:** High; finite-field dimension, rank work, free-variable trials, and
-  verifier calls are bounded before Sage execution.
-- **Solver adaptation:** Build maps in Sage, reduce the source-derived identities to
-  bounded linear/triangular solves, and enumerate only a stated free-variable budget.
-- **Failure interpretation:** A failed wrapper identity rejects the challenge-derived
-  route; it makes no claim about generic UOV security.
-- **Proof:** Evaluate every original public map and complete wrapper acceptance predicate.
+- **Observable signals:** Seven 112-byte signature components and seven UOV public maps.
+- **Equations:** The exact verifier is
+  `XOR_i PubMap_i(sig_i)=SHAKE256(msg,44)`.
+- **Hard assumptions:** The exact public maps and parser are pinned, a reduced verifier
+  replays, and a concrete source-faithful exploit invariant is separately proved. Honest
+  toy signing is not an exploit invariant.
+- **Cheapest falsifier:** Evaluate all seven maps, XOR their 44-byte outputs, and compare
+  with the exact SHAKE256 target.
+- **Expected cost:** At most 65536 explicitly justified candidate trials. Without a
+  concrete exploit identity, the card remains blocked rather than inventing rank algebra.
+- **Solver adaptation:** Build the exact verifier and bound any candidate search, but do
+  not claim linear/triangular structure unless it is derived and independently verified.
+- **Failure interpretation:** The pinned zero-solve source has no author solution; absent
+  a verified invariant, this route stays blocked.
+- **Proof:** Evaluate every `PubMap_i`, XOR all outputs, and match SHAKE256(msg,44).
 - **Primary citation:** Kipnis, Patarin, and Goubin, *Unbalanced Oil and Vinegar signature
   schemes*, DOI `10.1007/3-540-48910-X_15`, 1999, defines UOV. Wrapper structure remains
   a challenge observation.
 - **Pinned challenge example:** SekaiCTF 2025 unfairy-ring,
   `project-sekai-ctf/sekaictf-2025@683dd81ae520581add40ec21c4819866e28cbde4`,
-  `crypto/unfairy-ring/dist/chall.py`.
+  `crypto/unfairy-ring/dist/chall.py:L10-L18`.
 
 ## `paper.csidh.auxiliary-point-leak`
 
-- **Observable signals:** CSIDH-like class-group action plus an extra point transported
-  through the secret action and printed with the public curve.
-- **Equations:** Reproduce the exact isogeny action on curve and point, then derive the
-  source-observed point-order/eigenspace relation used to distinguish secret exponents.
-- **Hard assumptions:** Curve parameters, prime list, exponent domain, point transport,
-  and invariant are exact; a small-parameter action reproduces the leak.
-- **Cheapest falsifier:** Transport known auxiliary points through small actions and test
-  the claimed order/eigenspace observation.
-- **Expected cost:** High; bound prime count, exponent interval, isogeny steps, order
-  tests, and backtracking nodes.
-- **Solver adaptation:** Partition/search the secret action only by proven auxiliary-point
-  behavior and verify candidates against both published curves and points.
+- **Observable signals:** A curve-plus-point public key where the base point has order
+  `p+1` and each selected `ell`-isogeny removes `ell` from the transported point order.
+- **Equations:** Compute `cf=(p+1)/ord(G_pub)` and set support bit
+  `e_i=1 iff ell_i divides cf` for each of 124 small primes.
+- **Hard assumptions:** Exponents lie in `{-1,0,1}` and the source defect makes sign
+  immaterial, so the support vector reproduces the public action.
+- **Cheapest falsifier:** Compute one point order and verify all 124 divisibility bits by
+  replaying both published curve-plus-point tuples.
+- **Expected cost:** One point-order computation, 124 divisibility tests, one bounded
+  action replay, and one shared-secret derivation; no backtracking.
+- **Solver adaptation:** Recover the support vector, replay it, derive `j(E)+x(G)`, then
+  derive the AES key and decrypt the ciphertext.
 - **Failure interpretation:** Curve-only public keys reject this wrapper card. A failed
   point invariant says nothing about standard CSIDH hardness.
 - **Proof:** Reapply the recovered action and reproduce every curve coefficient, point,
@@ -186,34 +188,33 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   The auxiliary leak is challenge-derived.
 - **Pinned challenge example:** ImaginaryCTF 2024 coast,
   `maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6`,
-  `ImaginaryCTF 2024/coast/chall.sage`.
+  `ImaginaryCTF 2024/coast/README.md:L11-L15` and `coast/solve.sage:L52-L69`.
 
 ## `symmetric.slide.periodic-round`
 
-- **Observable signals:** Repeated keyed 16-round Feistel-plus-affine chunk, public chunk
-  index XOR before each chunk, chosen-input surface, and a tested normalized relation.
-- **Equations:** Source defines `G_c(x)=Chunk(x XOR c)` and
-  `E(x)=G_(r-1)(...G_1(G_0(x)))`. Derive and test a relation across `G_c,G_(c+1)`; do
-  not replace it with unsupported `E=Chunk^r`.
-- **Hard assumptions:** Counter wrapper, affine layer, round core, chunk count, and
-  chosen-input behavior are exact; a reduced-key/block model confirms the relation.
-- **Cheapest falsifier:** Test two adjacent normalized chunks on a reduced model. A bare
-  repeated-round match that ignores `x XOR c` is explicitly rejected.
-- **Expected cost:** High; chosen texts, 24-bit table entries, candidate pairs, memory,
-  and key checks are fixed before execution.
-- **Solver adaptation:** Implement the resolved source exactly, derive normalized slid-
-  pair filters, recover candidate chunk parameters under caps, and replay full encryption.
+- **Observable signals:** `tc_demo.py` exposes chosen 16-round encryption and a 1024-round
+  flag target; the core is 24-bit with a 16-bit Feistel subkey and 24x24 affine layer.
+- **Equations:** Encryption applies `x=F(x XOR c)` per chunk; inversion is
+  `state=F^-1(state) XOR c` in reverse counter order.
+- **Hard assumptions:** Both service and core sources are pinned, at least 25 independent
+  augmented pairs exist (the author solver uses 64), and the affine system has full rank.
+- **Cheapest falsifier:** Brute-force the 16-bit subkey, solve the affine map, and require
+  every held-out 16-round pair to replay before targeting the flag.
+- **Expected cost:** 64 chosen pairs, at most `2^16` subkey guesses, one 24x24 affine
+  solve, and exactly 64 inverse chunks for the 1024-round flag.
+- **Solver adaptation:** Recover the subkey, recover the affine layer and constant, then
+  apply `F^-1(state) XOR c` over all 64 chunks.
 - **Failure interpretation:** Failed normalization rejects the slide card; repeated source
   code alone is not evidence. Do not compensate with an unbounded codebook.
-- **Proof:** Reproduce held-out chosen pairs and complete encrypt/decrypt results for every
-  tested round count including the counter wrapper.
+- **Proof:** Reproduce all held-out 16-round pairs, invert 64 target chunks, and re-encrypt
+  the recovered flag through the exact 1024-round wrapper.
 - **Primary citation:** Biryukov and Wagner, *Advanced slide attacks*, DOI
   `10.1007/3-540-45539-6_41`, EUROCRYPT 2000, author/proceedings PDF
   `https://www.iacr.org/archive/eurocrypt2000/1807/18070595-new.pdf`.
 - **Pinned challenge example:** BSidesSF 2026 tokencrypt,
   `BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330`,
-  `tokencrypt/distfiles/tokencrypt.py:L1`, resolved at the same SHA to
-  `tokencrypt/challenge/src/tokencrypt.py:L11-L19,L300-L326`.
+  `tokencrypt/challenge/src/tc_demo.py:L12-L175` and
+  `tokencrypt/challenge/src/tokencrypt.py:L11-L326`.
 
 ## `symmetric.rotor.group-conjugacy`
 
@@ -237,7 +238,7 @@ challenge title or citation token can rank a card but cannot satisfy its hard ga
   and final wiring in the challenge implementation.
 - **Primary citation:** The canonical source is challenge code, not an attack paper:
   `UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac`,
-  `rotor-cipher/rotor_cipher.py:L46-L103,L107-L149`.
+  `rotor-cipher/rotor_cipher.py:L46-L149`.
 - **Pinned challenge example:** UofTCTF 2026 Rotor Cipher at that immutable source. The
   catalog maps the observed permutation equations to group conjugacy without claiming an
   external theorem about this wrapper.

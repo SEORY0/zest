@@ -4,7 +4,7 @@
 # ///
 """Evaluate AttackCard conditions and construct deterministic rank reports."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
 from operator import ge, gt, le, lt
@@ -235,6 +235,10 @@ def rank_cards_with_digests(fingerprint: Fingerprint, cards: Tuple[AttackCard, .
 
 def _rank_cards(fingerprint: Fingerprint, cards: Tuple[AttackCard, ...], fingerprint_sha256: str, catalog_sha256: str) -> RankReport:
     facts = {fact.key: fact for fact in fingerprint.facts}
+    budget = facts.get("oracle.query_budget")
+    limit = fingerprint.constraints.max_oracle_queries
+    if budget is not None and limit is not None and isinstance(budget.value, int) and not isinstance(budget.value, bool):
+        facts[budget.key] = replace(budget, value=min(budget.value, limit))
     capabilities = {capability.command: capability for capability in fingerprint.capabilities}
     evaluations = tuple(_rank_card(card, facts, capabilities) for card in cards)
     eligible = tuple(sorted((item for item in evaluations if item.state is CardState.ELIGIBLE), key=lambda item: (-_required_score(item), str(item.card_id))))
@@ -311,7 +315,7 @@ def _card_document(card: AttackCard) -> Dict[str, JsonValue]:
         "tooling": [{"command": item.command, "required": item.required, "packages": list(item.packages), "reason": item.reason} for item in card.tooling],
         "template": card.template, "procedure": [{"id": item.id, "instruction": item.instruction} for item in card.procedure],
         "citations": [{"kind": item.kind, "paper_id": item.paper_id, "title": item.title, "url": item.url, "year": item.year, "section": item.section, "assumptions": list(item.assumptions), "verified_on": item.verified_on} for item in card.citations],
-        "examples": [{"challenge_id": item.challenge_id, "event": item.event, "year": item.year, "repo_url": item.repo_url, "repo_sha": item.repo_sha, "source_path": item.source_path, "source_lines": item.source_lines, "inference_level": item.inference_level} for item in card.examples],
+        "examples": [{"challenge_id": item.challenge_id, "event": item.event, "year": item.year, "source_kind": item.source_kind, "repo_url": item.repo_url, "repo_sha": item.repo_sha, "source_path": item.source_path, "source_lines": item.source_lines, "inference_level": item.inference_level} for item in card.examples],
         "verification": [{"kind": item.kind, "instruction": item.instruction} for item in card.verification],
     }
 

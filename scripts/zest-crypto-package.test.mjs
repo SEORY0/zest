@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -162,6 +162,28 @@ test('zest-crypto ships only self-contained Markdown links', async () => {
 
   // When: package-relative links in every shipped Markdown document are resolved.
   await assertLocalMarkdownLinks(skillDirectory);
+});
+
+test('zest-crypto entrypoint directly exposes the catalog and every family reference', async () => {
+  // Given: the only Markdown entrypoint guaranteed to be loaded with the skill.
+  const skillDirectory = join(root, 'skills', 'zest-crypto');
+  const entrypoint = join(skillDirectory, 'SKILL.md');
+  const contents = await readFile(entrypoint, 'utf8');
+  const expected = [
+    'references/attack-cards.json',
+    'references/literature.md',
+    'references/families/ecc-and-signatures.md',
+    'references/families/lattices-and-small-roots.md',
+    'references/families/paper-derived-constructions.md',
+    'references/families/prngs-streams-and-oracles.md',
+    'references/families/rsa-and-number-theory.md',
+  ];
+
+  // When: active package-relative links are resolved from the entrypoint.
+  const targets = new Set(relativeMarkdownTargets(contents));
+
+  // Then: every progressive-disclosure surface is directly reachable.
+  expected.forEach((target) => assert.equal(targets.has(target), true, `${target}: missing entrypoint link`));
 });
 
 test('zest-crypto rejects an escaping reference-style Markdown link', async () => {
@@ -412,5 +434,8 @@ test('zest-crypto ships every catalog template inside the standalone package', a
   for (const template of templates) {
     assert.equal(isInside(skillDirectory, template), true, `${template}: catalog template escapes the standalone skill`);
     assert.equal(existsSync(template), true, `${template}: catalog template is missing from the standalone skill`);
+    const metadata = await lstat(template);
+    assert.equal(metadata.isSymbolicLink(), false, `${template}: catalog template must not be a symbolic link`);
+    assert.equal(metadata.isFile(), true, `${template}: catalog template must be a regular file`);
   }
 });

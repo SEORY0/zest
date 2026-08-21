@@ -25,5 +25,12 @@ private endpoints out of commands and case artifacts.
 
 ## References
 
+- [Machine-readable AttackCard catalog](references/attack-cards.json)
+- [Literature and adaptation gates](references/literature.md)
 - [Case workflow](references/workflow.md)
 - [Proof requirements](references/validation.md)
+- [RSA and number theory](references/families/rsa-and-number-theory.md)
+- [ECC and signatures](references/families/ecc-and-signatures.md)
+- [Lattices and small roots](references/families/lattices-and-small-roots.md)
+- [PRNGs, streams, and oracles](references/families/prngs-streams-and-oracles.md)
+- [Paper-derived constructions](references/families/paper-derived-constructions.md)

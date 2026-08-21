@@ -1,0 +1,146 @@
+{
+  "mat347_valid": {
+    "schema_version": 1,
+    "case_id": "mat347-valid",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "family", "key": "construction.canonical_family", "value": "lattice.subset-sum.query-schedule", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/mat347/dist/chall.py:L24-L55"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["adaptive-query-schedule", "nonce-subset-sum", "mat347-signature-k-times-s-minus-xr-equals-z"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "toy replay"}},
+      {"id": "negatives", "key": "construction.negative_matches_checked", "value": ["paper.wagner.generalized-birthday"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "routing check"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": false, "version": null}],
+    "constraints": {"network": "disabled", "max_seconds": 30, "max_memory_mb": 512, "max_oracle_queries": 670}
+  },
+  "mat347_unrelated_anchor": {
+    "schema_version": 1,
+    "case_id": "mat347-unrelated-anchor",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "family", "key": "construction.canonical_family", "value": "lattice.subset-sum.query-schedule", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/unrelated/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/wrong.py:L1-L2"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L1-L2"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["adaptive-query-schedule", "nonce-subset-sum", "mat347-signature-k-times-s-minus-xr-equals-z"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "toy replay"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+  },
+  "mat347_standard_ecdsa": {
+    "schema_version": 1,
+    "case_id": "mat347-standard-ecdsa",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "family", "key": "construction.canonical_family", "value": "lattice.subset-sum.query-schedule", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/mat347/dist/chall.py:L24-L55"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["adaptive-query-schedule", "nonce-subset-sum", "ecdsa-standard-signature-s-k-equals-z-plus-r-d"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L35-L40"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "standard ECDSA toy"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+  },
+  "mat347_independent_lists": {
+    "schema_version": 1,
+    "case_id": "mat347-independent-lists",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "family", "key": "construction.canonical_family", "value": "lattice.subset-sum.query-schedule", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "paper", "key": "construction.paper_ids", "value": ["doi:10.1007/3-540-45708-9_19"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "citation"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/mat347/dist/chall.py:L24-L55"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L24-L55"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["adaptive-query-schedule", "nonce-subset-sum", "mat347-signature-k-times-s-minus-xr-equals-z", "independent-k-lists"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "adversarial mixed model"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "toy replay"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+  },
+  "eclcg_valid": {
+    "schema_version": 1,
+    "case_id": "eclcg-valid",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L12-L22"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "L31-L64"}},
+      {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-p-observed-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
+      {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["lcg-modulus-p-differs-from-ecdsa-order-q", "bounded-mod-p-to-mod-q-nonce-lifts", "orthogonal-lattice-stern-bridge"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "source and author solution"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
+    "constraints": {"network": "disabled", "max_seconds": 3600, "max_memory_mb": 4096}
+  },
+  "eclcg_same_modulus": {
+    "schema_version": 1,
+    "case_id": "eclcg-same-modulus",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "generic model"}},
+      {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/maple3142/My-CTF-Challenges@7b3e786a2c20812f4da23536c7817bdfe8113dd6/HITCON%20CTF%202024/ECLCG/dist/chall.py:L25-L64"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L25-L64"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["same-modulus-polynonce-elimination"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "generic model"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "generic toy"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
+    "constraints": {"network": "disabled"}
+  },
+  "eclcg_unrelated_anchor": {
+    "schema_version": 1,
+    "case_id": "eclcg-unrelated-anchor",
+    "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
+    "facts": [
+      {"id": "scheme", "key": "signature.scheme", "value": "ecdsa", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "samples", "key": "signature.sample_count", "value": 16, "value_type": "integer", "status": "observed", "evidence": {"input_id": "source", "locator": "signatures"}},
+      {"id": "recurrence", "key": "signature.nonce_recurrence", "value": "lcg-mod-p-observed-mod-q", "value_type": "string", "status": "observed", "evidence": {"input_id": "source", "locator": "recurrence"}},
+      {"id": "paper", "key": "construction.paper_ids", "value": ["eprint:2023/305"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "reference"}},
+      {"id": "anchor", "key": "construction.source_anchors", "value": ["github.com/unrelated/repo@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/wrong.py:L1-L2"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "L1-L2"}},
+      {"id": "parameters", "key": "construction.parameter_signature", "value": ["lcg-modulus-p-differs-from-ecdsa-order-q", "bounded-mod-p-to-mod-q-nonce-lifts", "orthogonal-lattice-stern-bridge"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "source and author solution"}},
+      {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
+    "constraints": {"network": "disabled"}
+  },
+  "cbc_insufficient": {
+    "schema_version": 1,
+    "case_id": "cbc-insufficient",
+    "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
+    "facts": [
+      {"id": "kind", "key": "oracle.kind", "value": "cbc-padding", "value_type": "string", "status": "observed", "evidence": {"input_id": "transcript", "locator": "oracle behavior"}},
+      {"id": "response", "key": "oracle.distinguishable_response", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "control probes"}},
+      {"id": "chosen", "key": "oracle.chosen_ciphertext", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "authorized mutation"}},
+      {"id": "budget", "key": "oracle.query_budget", "value": 257, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "service limit"}},
+      {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 257}
+  },
+  "cbc_constraint_capped": {
+    "schema_version": 1,
+    "case_id": "cbc-constraint-capped",
+    "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
+    "facts": [
+      {"id": "kind", "key": "oracle.kind", "value": "cbc-padding", "value_type": "string", "status": "observed", "evidence": {"input_id": "transcript", "locator": "oracle behavior"}},
+      {"id": "response", "key": "oracle.distinguishable_response", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "control probes"}},
+      {"id": "chosen", "key": "oracle.chosen_ciphertext", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "authorized mutation"}},
+      {"id": "budget", "key": "oracle.query_budget", "value": 258, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "service limit"}},
+      {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 257}
+  },
+  "cbc_sufficient": {
+    "schema_version": 1,
+    "case_id": "cbc-sufficient",
+    "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
+    "facts": [
+      {"id": "kind", "key": "oracle.kind", "value": "cbc-padding", "value_type": "string", "status": "observed", "evidence": {"input_id": "transcript", "locator": "oracle behavior"}},
+      {"id": "response", "key": "oracle.distinguishable_response", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "control probes"}},
+      {"id": "chosen", "key": "oracle.chosen_ciphertext", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "transcript", "locator": "authorized mutation"}},
+      {"id": "budget", "key": "oracle.query_budget", "value": 258, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "service limit"}},
+      {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
+    ],
+    "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
+    "constraints": {"network": "disabled", "max_oracle_queries": 258}
+  }
+}

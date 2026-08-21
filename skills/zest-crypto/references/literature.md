@@ -18,8 +18,10 @@ section or lines, and access date. Never pin a moving branch or a search-result 
 All six gates must pass before a researched technique becomes an attempted solver.
 
 1. **Source gate.** Record one canonical primary identifier and, for a wrapper-derived
-   claim, one immutable challenge `repo_sha/source_path/source_lines` anchor. A paper
-   about a construction and source code containing its name are not yet an attack.
+   claim, an exact immutable `host/owner/repo@40-hex-sha/path:Lx-Ly` anchor. Repository
+   URLs use canonical HTTPS without userinfo, query, fragment, encoded traversal, or
+   ambiguous authority. A paper about a construction and source containing its name are
+   not yet an attack.
 2. **Family gate.** Map challenge variables, operations, variants, and aliases to one
    canonical family. Separate a paper's construction theorem from a later attack paper
    and from challenge-specific glue. If two families remain plausible, keep both as
@@ -46,13 +48,18 @@ All six gates must pass before a researched technique becomes an attempted solve
 - FROST ePrint 2020/852 specifies a threshold Schnorr construction and security proof.
   It is not evidence of a generic FROST exploit. Any weakness must be observed in the
   wrapper transcript or validation code.
-- Bellare-Goldwasser-Micciancio's LCG result is for DSS. An ECDSA card must write the
-  mapping `k_i=(z_i+r_i*d)/s_i mod q` and cite an ECDSA adaptation or prove the lift.
+- Bellare-Goldwasser-Micciancio's LCG result is for DSS. Generic ECDSA recurrence cards
+  must write `k_i=(z_i+r_i*d)/s_i mod q`; pinned ECLCG additionally evolves integer
+  states modulo a separate 311-bit `p`, so it requires the author solution's bounded
+  mod-`p` to mod-`q` lifts and orthogonal/Stern bridge.
 - UOV wrapper structure, CSIDH auxiliary-point leakage, adaptive subset-sum query
   schedules, GM ciphertext replication, and rotor permutation conjugacy are allowed
-  only as challenge-derived observations at their pinned revisions.
-- A periodic round is not by itself a slide. For TokenCrypt, normalize and test the
-  public per-chunk `x XOR c` wrapper around the repeated keyed chunk.
+  only as challenge-derived observations at their pinned revisions. The unfairy-ring
+  UOV route stays blocked until a concrete exploit invariant beyond honest verifier
+  acceptance is established.
+- A periodic round is not by itself a slide. For TokenCrypt, use the pinned 16-round
+  chosen-pair service to recover the 16-bit Feistel subkey and 24x24 affine map, then
+  invert all 64 chunks with `F^-1(state) XOR c`.
 
 ## Family references
 

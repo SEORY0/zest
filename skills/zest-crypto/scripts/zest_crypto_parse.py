@@ -46,6 +46,11 @@ from zest_crypto_types import (
     ToolRequirement,
     VerificationStep,
 )
+from zest_crypto_source import (
+    is_canonical_https_url,
+    is_canonical_source_anchor,
+    is_canonical_source_lines,
+)
 
 
 SCHEMA_VERSION = 1
@@ -73,6 +78,9 @@ FACT_VALUE_TYPES: Dict[str, str] = {
     "signature.nonce_leak_bits": "integer",
     "signature.nonce_bias_bound": "integer",
     "signature.nonce_recurrence": "string",
+    "signature.nonce_leak_orientation": "string",
+    "signature.hnp_model": "string",
+    "signature.hnp_parameter_bound_verified": "boolean",
     "prng.family": "string",
     "prng.output_count": "integer",
     "prng.output_word_bits": "integer",
@@ -81,11 +89,13 @@ FACT_VALUE_TYPES: Dict[str, str] = {
     "oracle.distinguishable_response": "boolean",
     "oracle.chosen_ciphertext": "boolean",
     "oracle.query_budget": "integer",
+    "oracle.recovery_bytes": "integer",
     "construction.canonical_family": "string",
     "construction.paper_ids": "string_list",
     "construction.source_anchors": "string_list",
     "construction.parameter_signature": "string_list",
     "construction.toy_invariant_verified": "boolean",
+    "construction.exploit_invariant_verified": "boolean",
     "construction.negative_matches_checked": "string_list",
 }
 
@@ -272,11 +282,20 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
             status = FactStatus(item_value["status"])
         except (TypeError, ValueError):
             _fail(path + ".status", "invalid-fact-status", "expected observed, derived, or inferred")
+        parsed_fact_value = _parse_fact_value(item_value["value"], value_type, path + ".value")
+        if key_value == "construction.source_anchors":
+            for anchor_index, anchor in enumerate(parsed_fact_value):
+                if not is_canonical_source_anchor(anchor):
+                    _fail(
+                        "{0}.value[{1}]".format(path, anchor_index),
+                        "invalid-source-anchor",
+                        "expected canonical host/owner/repo@40-hex-SHA/path:Lx-Ly",
+                    )
         facts.append(
             Fact(
                 id=FactId(_string(item_value["id"], path + ".id")),
                 key=FactKey(key_value),
-                value=_parse_fact_value(item_value["value"], value_type, path + ".value"),
+                value=parsed_fact_value,
                 status=status,
                 evidence=_parse_evidence(item_value["evidence"], path + ".evidence", status),
             )
@@ -494,8 +513,8 @@ def _parse_citation(raw: Any, path: str) -> Citation:
         _fail(path + ".paper_id", "missing-citation-identifier", "citations require a non-empty paper_id")
     value = _object(raw, path, ("kind", "paper_id", "title", "url", "year", "section", "assumptions", "verified_on"), ("kind", "paper_id", "title", "url", "year", "section", "assumptions", "verified_on"))
     url = _string(value["url"], path + ".url")
-    if not url.startswith("https://"):
-        _fail(path + ".url", "invalid-citation-url", "citation URLs must use https")
+    if not is_canonical_https_url(url):
+        _fail(path + ".url", "invalid-citation-url", "citation URLs must use canonical unambiguous https")
     return Citation(
         _string(value["kind"], path + ".kind"),
         paper_id,
@@ -512,26 +531,37 @@ def _parse_example(raw: Any, path: str) -> PinnedExample:
     value = _object(
         raw,
         path,
-        ("challenge_id", "event", "year", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
-        ("challenge_id", "event", "year", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
+        ("challenge_id", "event", "year", "source_kind", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
+        ("challenge_id", "event", "year", "source_kind", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
     )
-    repo_sha = _string(value["repo_sha"], path + ".repo_sha", "invalid-repository-sha")
-    if not GIT_SHA_RE.fullmatch(repo_sha):
-        _fail(path + ".repo_sha", "invalid-repository-sha", "expected a 40-character lowercase commit SHA")
-    repo_url = _string(value["repo_url"], path + ".repo_url")
-    if not repo_url.startswith("https://"):
-        _fail(path + ".repo_url", "invalid-repository-url", "pinned repository URLs must use https")
+    source_kind = value["source_kind"]
+    if source_kind not in ("remote", "local"):
+        _fail(path + ".source_kind", "invalid-source-kind", "expected remote or local")
+    repo_url = value["repo_url"]
+    repo_sha = value["repo_sha"]
+    if source_kind == "remote":
+        if not isinstance(repo_url, str) or not is_canonical_https_url(repo_url, repository=True):
+            _fail(path + ".repo_url", "invalid-repository-url", "pinned repository URLs must use canonical unambiguous https")
+        if not isinstance(repo_sha, str) or not GIT_SHA_RE.fullmatch(repo_sha):
+            _fail(path + ".repo_sha", "invalid-repository-sha", "expected a 40-character lowercase commit SHA")
+    elif repo_url is not None or repo_sha is not None:
+        field = "repo_url" if repo_url is not None else "repo_sha"
+        _fail(path + "." + field, "invalid-local-example", "local package examples may not claim a remote repository")
+    source_lines = value["source_lines"]
+    if not is_canonical_source_lines(source_lines):
+        _fail(path + ".source_lines", "invalid-source-lines", "expected one canonical inclusive Lx-Ly range")
     level = value["inference_level"]
-    if level not in ("direct", "inferred"):
-        _fail(path + ".inference_level", "invalid-inference-level", "expected direct or inferred")
+    if level not in ("direct", "inferred", "variant"):
+        _fail(path + ".inference_level", "invalid-inference-level", "expected direct, inferred, or variant")
     return PinnedExample(
         _string(value["challenge_id"], path + ".challenge_id"),
         _string(value["event"], path + ".event"),
         _integer(value["year"], path + ".year", 1),
+        source_kind,
         repo_url,
         repo_sha,
         _parse_case_relative_path(value["source_path"], path + ".source_path", "invalid-source-path"),
-        _string(value["source_lines"], path + ".source_lines"),
+        source_lines,
         level,
     )
 

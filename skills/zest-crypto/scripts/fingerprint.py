@@ -14,10 +14,10 @@ import re
 import shutil
 import stat
 import sys
-import unicodedata
 from pathlib import Path
 
 from zest_crypto_parse import FACT_VALUE_TYPES
+from zest_crypto_source import is_canonical_source_anchor
 
 
 CAPABILITY_COMMANDS = ("python3", "sage", "z3")
@@ -39,7 +39,6 @@ CLUE_FAMILIES = {
     "repeated-round": "symmetric.slide.periodic-round",
     "slide": "symmetric.slide.periodic-round",
 }
-ANCHOR_ASCII = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-/")
 URL_OPENERS = frozenset(("\"", "'", "<", "(", "[", "{"))
 URL_CLOSERS = frozenset(("\"", "'", "<", ">", ")", "]", "}"))
 DOI_TOKEN_STOPPERS = frozenset(("\"", "'", "<", ">", "[", "]", "{", "}"))
@@ -116,33 +115,7 @@ def _string_list(value):
 
 def _immutable_anchor(value):
     """Accept ``repo@40-hex-SHA/path:Lx-Ly`` immutable source anchors only."""
-
-    repository, marker, revision_path = value.rpartition("@")
-    if not marker or "@" in repository or not _anchor_ascii(repository):
-        return False
-    revision, separator, location = revision_path.partition("/")
-    if not separator or len(revision) != 40 or any(character not in "0123456789abcdef" for character in revision):
-        return False
-    source_path, line_marker, line_range = location.rpartition(":")
-    if not line_marker or source_path.startswith("/") or "\\" in source_path or not _anchor_ascii(source_path):
-        return False
-    components = source_path.split("/")
-    if any(component in ("", ".", "..") for component in components):
-        return False
-    first, hyphen, last = line_range.partition("-")
-    if not hyphen or first.count("L") != 1 or last.count("L") != 1 or not first.startswith("L") or not last.startswith("L"):
-        return False
-    if not _line_number(first[1:]) or not _line_number(last[1:]):
-        return False
-    return len(first[1:]) < len(last[1:]) or len(first[1:]) == len(last[1:]) and first[1:] <= last[1:]
-
-
-def _anchor_ascii(value):
-    return bool(value) and all(unicodedata.category(character).startswith("C") is False and character in ANCHOR_ASCII for character in value)
-
-
-def _line_number(value):
-    return bool(value) and value[0] != "0" and all("0" <= character <= "9" for character in value)
+    return is_canonical_source_anchor(value)
 
 
 def _signature_samples(value):

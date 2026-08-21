@@ -49,7 +49,9 @@ An `InputArtifact` has `id`, a normalized case-relative `path`, 64 lowercase
 hexadecimal `sha256`, and `media_type`. `Capability` has `command`, `available`,
 and `version` (a string or `null`). `constraints.network` is `disabled` or
 `allowed` and defaults to `disabled`; `max_seconds`, `max_memory_mb`, and
-`max_oracle_queries` are non-negative integers when present.
+`max_oracle_queries` are non-negative integers when present. During ranking, the
+effective `oracle.query_budget` is the lower of its observed fact value and
+`constraints.max_oracle_queries` when both exist.
 
 Each fact has `id`, `key`, `value`, `value_type`, `status`, and `evidence`.
 The allowed value types are `boolean`, `integer`, `number`, `string`,
@@ -91,6 +93,9 @@ The finite v1 fact vocabulary is:
 | `signature.nonce_leak_bits` | `integer` |
 | `signature.nonce_bias_bound` | `integer` |
 | `signature.nonce_recurrence` | `string` |
+| `signature.nonce_leak_orientation` | `string` |
+| `signature.hnp_model` | `string` |
+| `signature.hnp_parameter_bound_verified` | `boolean` |
 | `prng.family` | `string` |
 | `prng.output_count` | `integer` |
 | `prng.output_word_bits` | `integer` |
@@ -99,11 +104,13 @@ The finite v1 fact vocabulary is:
 | `oracle.distinguishable_response` | `boolean` |
 | `oracle.chosen_ciphertext` | `boolean` |
 | `oracle.query_budget` | `integer` |
+| `oracle.recovery_bytes` | `integer` |
 | `construction.canonical_family` | `string` |
 | `construction.paper_ids` | `string_list` |
 | `construction.source_anchors` | `string_list` |
 | `construction.parameter_signature` | `string_list` |
 | `construction.toy_invariant_verified` | `boolean` |
+| `construction.exploit_invariant_verified` | `boolean` |
 | `construction.negative_matches_checked` | `string_list` |
 
 Unknown keys and a mismatched `value_type` are rejected. Fact IDs and fact keys
@@ -111,6 +118,12 @@ must each be unique within a fingerprint; card IDs must be unique within the
 catalog. `FactIndex` maps each fact key to one fact, so a duplicate key is
 rejected instead of silently selecting an order-dependent value or evidence
 record.
+
+Every `construction.source_anchors` element uses the canonical form
+`host/owner/repo@40-lowercase-hex-sha/path:Lx-Ly`. The host is lowercase, source
+paths are normalized and percent-encode spaces canonically, line numbers are
+positive without leading zeroes, and traversal or encoded slash/backslash
+ambiguities are rejected even for fingerprints parsed directly from JSON.
 
 ## Predicate DSL and tri-state semantics
 
@@ -168,12 +181,16 @@ or redundant component, or otherwise escape the skill root. The parser
 validates containment but does not test file presence: packaged template
 existence is a separate package-integrity check.
 
-Each citation has `kind`, non-empty `paper_id`, `title`, HTTPS `url`, positive
+Each citation has `kind`, non-empty `paper_id`, `title`, canonical HTTPS `url`, positive
 `year`, `section`, non-empty string-array `assumptions`, and `verified_on`.
-Each pinned example has `challenge_id`, `event`, positive `year`, HTTPS
-`repo_url`, a 40-lowercase-hex `repo_sha`, normalized relative `source_path`,
-`source_lines`, and `inference_level` (`direct` or `inferred`). Cards with IDs
-starting `paper.` are research tier and require at least one pinned example.
+Each pinned example has `challenge_id`, `event`, positive `year`, `source_kind`,
+`repo_url`, `repo_sha`, normalized relative `source_path`, one inclusive
+`source_lines` span in canonical `Lx-Ly` form, and `inference_level` (`direct`,
+`inferred`, or `variant`). A `remote` example requires a canonical HTTPS
+repository URL without query or fragment and a 40-lowercase-hex commit SHA. A
+`local` example requires both repository fields to be `null` and its source
+path to remain inside the skill package. Cards with IDs starting `paper.` are
+research tier and require at least one pinned example.
 `cheap_probes` have `id`, `instruction`, non-negative `max_seconds`, and
 `produces_facts`; procedure entries have `id` and `instruction`; verification
 entries have `kind` and `instruction`.
@@ -263,6 +280,7 @@ The following complete card is valid JSON and parses with `parse_catalog`:
         "challenge_id": "example-broadcast",
         "event": "Schema example",
         "year": 2026,
+        "source_kind": "remote",
         "repo_url": "https://github.com/example/example",
         "repo_sha": "8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac",
         "source_path": "challenge.py",
@@ -334,7 +352,9 @@ The parser reports a single first failure. Important diagnostic codes are
 `duplicate-fact-id`, `duplicate-fact-key`, `duplicate-card-id`, `unknown-fact-key`,
 `unknown-operator`, `boolean-nesting-too-deep`, `invalid-signal-weight`,
 `invalid-template-path`, `missing-citation-identifier`, and
-`research-card-missing-pinned-example`. `input-undecodable` and
+`research-card-missing-pinned-example`. Source-boundary diagnostics include
+`invalid-citation-url`, `invalid-repository-url`, `invalid-source-anchor`,
+`invalid-source-lines`, and `invalid-local-example`. `input-undecodable` and
 `input-too-deep` normalize expected untrusted input boundary failures;
 `non-finite-number` rejects non-finite decoded programmatic values.
 `invalid-card-id` is used for a card ID outside the lowercase dotted/hyphenated

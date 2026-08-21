@@ -34,20 +34,20 @@ query budget already recorded by the case.
   `P_i=D_K(C_i) XOR C_(i-1)`; force suffix bytes to padding value `j` and enumerate the
   next intermediate byte.
 - **Hard assumptions:** The response distinction is reproducible under one fixed key,
-  ciphertext mutation is accepted, and the case authorizes enough queries.
-- **Cheapest falsifier:** Repeat eight valid controls and eight one-byte-invalid controls;
-  reject noisy or indistinguishable response classes.
-- **Expected cost:** Oracle-bound; at most 256 guesses per byte plus ambiguity controls,
-  always below `max_oracle_queries`.
-- **Solver adaptation:** Write a case-local client with deterministic guess order,
-  ambiguity probes, transcript logging, timeout, and hard query counter.
+  ciphertext mutation is accepted, recovery scope is exactly one byte, and the effective
+  budget `min(oracle.query_budget,max_oracle_queries)` is at least 258.
+- **Cheapest falsifier:** Reserve one known-valid control and one ambiguity perturbation;
+  reject noisy response classes or a budget below the worst-case 256-guess byte search.
+- **Expected cost:** Oracle-bound; one byte, at most 256 guesses, and two controls.
+- **Solver adaptation:** Write a one-byte case-local probe with deterministic guess order,
+  one ambiguity probe, transcript logging, timeout, and a hard effective query counter.
 - **Failure interpretation:** Instability blocks the oracle; it is not permission to add
   timing amplification or more traffic.
-- **Proof:** Replay the complete transcript and independently decrypt/re-encrypt every
-  recovered CBC block.
+- **Proof:** Replay the bounded transcript and independently verify the one recovered
+  plaintext byte. Do not claim block or full-plaintext recovery from this card.
 - **Primary citation:** Vaudenay, *Security flaws induced by CBC padding: applications to
   SSL, IPSEC, WTLS*, EUROCRYPT 2002 author/proceedings PDF at
-  `https://iacr.org/cryptodb/archive/2002/EUROCRYPT/2850/2850.pdf`.
+  `https://www.iacr.org/archive/eurocrypt2002/23320530/cbc02_e02d.pdf`.
 - **Pinned challenge example:** No remote challenge is pinned in v1. A case must pin its
   authorized protocol/version and local replay harness before attempting queries.
 
@@ -55,17 +55,17 @@ query budget already recorded by the case.
 
 - **Observable signals:** Right-shift Galois LFSR source, 32-bit state words XORed with
   file blocks, and aligned known PNG header bytes.
-- **Equations:** `K_i=C_i XOR P_i`; source step is
-  `out=state&1`, `state>>=1`, and conditional `state XOR=TapMask`.
+- **Equations:** `K_i=C_i XOR P_i`; each four-byte block emits the current 32-bit state
+  in big-endian order, then applies one step `out=state&1`, `state>>=1`, and conditional
+  `state XOR=TapMask`.
 - **Hard assumptions:** Plaintext/ciphertext alignment and big-endian word packing match
   source, enough exact keystream bits are known, and the recurrence is linear over GF(2).
 - **Cheapest falsifier:** Use PNG magic/header bytes to expose initial words and test one
   exact source step against the next word.
-- **Expected cost:** Low for a 32-variable GF(2) solve and full-file replay. The bundled
-  exhaustive template is intentionally limited to toy widths no greater than 12.
-- **Solver adaptation:** Validate direction/bit order with
-  `assets/solver-templates/lfsr_known_plaintext.py`, then replace toy exhaustive search
-  with a bounded linear recurrence/state solve for the 32-bit instance.
+- **Expected cost:** Low; recover the initial state from the first exposed word, derive a
+  unique tap from odd transitions, verify every transition, and replay the full file.
+- **Solver adaptation:** Run `assets/solver-templates/lfsr_known_plaintext.py` with
+  `state-word-be`. Its six-argument legacy bitstream mode remains separately supported.
 - **Failure interpretation:** A failed step points to alignment, endianness, or tap/state
   convention; do not silently switch to a Fibonacci LFSR model.
 - **Proof:** Replay every state transition and ciphertext byte, validate PNG structure,
@@ -78,29 +78,29 @@ query budget already recorded by the case.
 
 ## `oracle.goldwasser-micali.replication`
 
-- **Observable signals:** A service accepts 128 attacker-selected valid GM bit
-  ciphertexts, decrypts them independently into an AES-128 key, and reveals a stable
-  application-level acceptance/error class.
-- **Equations:** A valid encryption of zero is `c=y^2 mod n`; a valid encryption of one
-  is `c=x*y^2 mod n`. Repeating the same valid `c` 128 times produces an all-zero or
-  all-one decrypted key.
-- **Hard assumptions:** `gcd(y,n)=1`, public `n,x` are used exactly, chosen ciphertexts
-  are authorized, and a payload encrypted under the forced key reaches a distinguishable
-  wrapper result.
-- **Cheapest falsifier:** Submit one all-zero-key and one all-one-key control transcript,
-  each with a locally matching AES-CBC payload.
-- **Expected cost:** Oracle-bound; two 128-line controls and only the separately declared
-  follow-up query budget.
-- **Solver adaptation:** Generate valid GM ciphertexts locally, replicate rather than
-  malform them, construct the matching AES payload, and log every submitted line and
-  service response.
+- **Observable signals:** The captured transcript contains 128 unknown GM ciphertexts;
+  the service decrypts a submitted 128-line vector into an AES-128 key and returns a
+  stable plaintext hash/certificate.
+- **Equations:** Repeating captured unknown `c_i` 128 times produces a constant key whose
+  bit is the original transcript bit. Compare the certificate with locally precomputed
+  all-zero and all-one decrypt/hash outcomes.
+- **Hard assumptions:** The captured vector order, fixed AES test ciphertext, certificate
+  calculation, and source revision are exact, and at least 128 classification submissions
+  are authorized.
+- **Cheapest falsifier:** Repeat one captured unknown ciphertext 128 times and require its
+  certificate to classify uniquely as the all-zero or all-one outcome.
+- **Expected cost:** Oracle-bound; 128 classification submissions plus local certificate
+  preparation and one original-transcript replay.
+- **Solver adaptation:** Repeat each captured ciphertext in turn, classify its certificate,
+  assemble the original 128-bit AES key in source order, then decrypt the captured payload.
 - **Failure interpretation:** Indistinguishable controls block the wrapper oracle. They
   do not disprove GM or authorize factoring attempts.
-- **Proof:** Verify public GM construction for every line, replay the AES payload under
-  the forced key, and reproduce both response classes.
+- **Proof:** Replay all 128 classifications, recover the original transcript key, and
+  decrypt/re-encrypt the original AES payload. Known-bit controls alone are not proof.
 - **Primary citation:** Goldwasser and Micali, *Probabilistic encryption*, DOI
   `10.1016/0022-0000(84)90070-9`, 1984. The replication weakness belongs to the wrapper,
   not the paper's semantic-security claim.
 - **Pinned challenge example:** BSidesSF 2026 `kproof`,
   `BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330`,
-  `kproof/challenge/src/kproof.go:L64-L133,L511-L690`.
+  `kproof/challenge/src/kproof.go:L64-L690`; the author route is
+  `kproof/solution/solve.py:L77-L157` at the same SHA.

@@ -1,0 +1,9 @@
+{
+  "derivation": "Synthetic plaintext encrypted with the pinned lfstream seed 0x074188a5, tap mask 0x82800010, current-state big-endian emission, and one Galois step per four-byte block.",
+  "expected_plaintext_sha256": "5b869148b65909054518d22991933505ac710c56e52d809c3d6892a836e562b7",
+  "max_candidates": 1,
+  "max_steps": 100000,
+  "schedule": "state-word-be",
+  "source_anchor": "github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/lfstream/challenge/lfsr_crypt.py:L4-L45",
+  "width": 32
+}

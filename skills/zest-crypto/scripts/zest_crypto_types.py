@@ -192,8 +192,9 @@ class PinnedExample:
     challenge_id: str
     event: str
     year: int
-    repo_url: str
-    repo_sha: str
+    source_kind: str
+    repo_url: Optional[str]
+    repo_sha: Optional[str]
     source_path: str
     source_lines: str
     inference_level: str
