@@ -4,29 +4,27 @@
 # ///
 """Conservatively fingerprint local crypto challenge sources without executing them."""
 
-import errno
 import hashlib
 import json
 import math
 import os
 import shutil
-import stat
 import sys
 from pathlib import Path
 
 from zest_crypto_fingerprint_extract import CLUE_FAMILIES, _extract_python, _extract_text, _extract_transcript
+from zest_crypto_input import MAX_INPUT_BYTES, InputBoundaryError, read_bounded_bytes
 from zest_crypto_parse import FACT_VALUE_TYPES, SCHEMA_VERSION
 
 
 CAPABILITY_COMMANDS = ("python3", "sage", "z3")
+MAX_FINGERPRINT_INPUTS = 16
+MAX_EXTRACTED_FACT_LIST_ITEMS = 256
+MAX_PAIRWISE_GCD_ITEMS = 128
 
 
-class InputError(Exception):
+class InputError(InputBoundaryError):
     """A stable CLI boundary error for one input or invocation."""
-
-    def __init__(self, path, code):
-        self.path = path
-        self.code = code
 
 
 def _media_type(path):
@@ -67,8 +65,25 @@ def _observed(facts, inputs, key, candidate):
     return _fact(facts, key, value, "observed", {"input_id": inputs[input_index]["id"], "locator": _locator(lines)})
 
 
+def _inferred_from_input(facts, inputs, key, candidate, rationale):
+    if candidate is None:
+        return None
+    value, input_index, lines = candidate
+    return _fact(facts, key, value, "inferred", {"input_id": inputs[input_index]["id"], "locator": _locator(lines), "rationale": rationale})
+
+
+def _check_fact_list_size(candidate):
+    if candidate is None:
+        return
+    value, _input_index, _lines = candidate
+    if isinstance(value, list) and len(value) > MAX_EXTRACTED_FACT_LIST_ITEMS:
+        raise InputError("$", "input-too-complex")
+
+
 def _build_facts(inputs, observations):
     facts = []
+    for key in ("rsa.moduli", "rsa.ciphertexts", "rsa.public_exponents", "signature.samples", "construction.source_anchors", "construction.paper_ids", "construction.parameter_signature"):
+        _check_fact_list_size(_selected(observations, key))
     _observed(facts, inputs, "rsa.public_exponent", _selected(observations, "rsa.public_exponent"))
     _observed(facts, inputs, "rsa.public_exponents", _selected(observations, "rsa.public_exponents"))
     _observed(facts, inputs, "rsa.modulus", _selected(observations, "rsa.modulus"))
@@ -86,7 +101,13 @@ def _build_facts(inputs, observations):
         if len(values) >= 2 and len(set(sample[0] for sample in values)) < len(values):
             _fact(facts, "signature.repeated_r", True, "observed", {"input_id": inputs[input_index]["id"], "locator": _locator(lines)})
     _observed(facts, inputs, "construction.paper_ids", _selected(observations, "construction.paper_ids"))
-    _observed(facts, inputs, "construction.source_anchors", _selected(observations, "construction.source_anchors"))
+    _inferred_from_input(
+        facts,
+        inputs,
+        "construction.source_anchors",
+        _selected(observations, "construction.source_anchors"),
+        "The literal anchor shape is valid, but source text does not attest repository content.",
+    )
     clues = _observed(facts, inputs, "construction.parameter_signature", _selected(observations, "construction.parameter_signature"))
     if clues is not None:
         families = {CLUE_FAMILIES[clue] for clue in clues["value"]}
@@ -95,56 +116,33 @@ def _build_facts(inputs, observations):
             _fact(facts, "construction.canonical_family", next(iter(families)), "inferred", {"input_id": clues["evidence"]["input_id"], "locator": clues["evidence"]["locator"], "rationale": "Exact {0} clue supports this family, but does not prove it.".format(clue)})
     if moduli is not None and len(moduli["value"]) >= 2:
         values = moduli["value"]
+        if len(values) > MAX_PAIRWISE_GCD_ITEMS:
+            raise InputError("$", "input-too-complex")
         if all(math.gcd(left, right) == 1 for index, left in enumerate(values) for right in values[index + 1:]):
             _fact(facts, "rsa.moduli_pairwise_coprime", True, "derived", {"source_fact_ids": [moduli["id"]], "rationale": "Pairwise gcd checks over the observed moduli were all one."})
     return facts
 
 
-def _read_regular_file(raw_path, issue_path):
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
-    nofollow = getattr(os, "O_NOFOLLOW", None)
-    descriptor = None
-    try:
-        original = os.lstat(raw_path)
-        if stat.S_ISLNK(original.st_mode):
-            raise InputError(issue_path, "input-symlink")
-        if not stat.S_ISREG(original.st_mode):
-            raise InputError(issue_path, "input-not-file")
-        if nofollow is not None:
-            flags |= nofollow
-        descriptor = os.open(raw_path, flags)
-        opened = os.fstat(descriptor)
-        if not stat.S_ISREG(opened.st_mode):
-            raise InputError(issue_path, "input-not-file")
-        if original.st_dev != opened.st_dev or original.st_ino != opened.st_ino:
-            raise InputError(issue_path, "input-unreadable")
-        handle = os.fdopen(descriptor, "rb", closefd=True)
-        descriptor = None
-        with handle:
-            return handle.read()
-    except InputError:
-        raise
-    except OSError as error:
-        if error.errno == errno.ELOOP:
-            raise InputError(issue_path, "input-symlink")
-        raise InputError(issue_path, "input-unreadable")
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-
-
 def _inputs(paths):
+    if len(paths) > MAX_FINGERPRINT_INPUTS:
+        raise InputError("$", "too-many-inputs")
     records = []
     seen = set()
     texts = []
+    total_bytes = 0
     for index, raw_path in enumerate(paths):
         try:
             path = Path(raw_path)
             normalized = os.path.normcase(os.path.abspath(os.path.normpath(raw_path)))
             if normalized in seen:
                 raise InputError("$[{0}]".format(index + 1), "duplicate-input-path")
-            content = _read_regular_file(raw_path, "$[{0}]".format(index + 1))
+            content = read_bounded_bytes(raw_path, "$[{0}]".format(index + 1), os)
+            total_bytes += len(content)
+            if total_bytes > MAX_INPUT_BYTES:
+                raise InputError("$", "input-too-large")
             text = content.decode("utf-8")
+        except InputBoundaryError as error:
+            raise InputError(error.path, error.code)
         except InputError:
             raise
         except UnicodeDecodeError:
@@ -162,13 +160,16 @@ def fingerprint(case_id, paths):
 
     inputs, texts = _inputs(paths)
     observations = {}
-    for index, (path, text) in enumerate(texts):
-        _extract_text(text, index, observations)
-        if path.suffix.lower() in (".py", ".sage"):
-            _extract_python(text, index, observations)
-        else:
-            _extract_transcript(text, index, observations)
-    return {"schema_version": SCHEMA_VERSION, "case_id": case_id, "inputs": inputs, "facts": _build_facts(inputs, observations), "capabilities": [{"command": command, "available": shutil.which(command) is not None, "version": None} for command in CAPABILITY_COMMANDS], "constraints": {"network": "disabled"}}
+    try:
+        for index, (path, text) in enumerate(texts):
+            _extract_text(text, index, observations)
+            if path.suffix.lower() in (".py", ".sage"):
+                _extract_python(text, index, observations)
+            else:
+                _extract_transcript(text, index, observations)
+    except InputBoundaryError as error:
+        raise InputError(error.path, error.code)
+    return {"schema_version": SCHEMA_VERSION, "case_id": case_id, "inputs": inputs, "facts": _build_facts(inputs, observations), "capabilities": [{"command": command, "available": shutil.which(command) is not None, "version": None} for command in CAPABILITY_COMMANDS], "constraints": {"network": "disabled", "oracle_access": "disabled"}}
 
 
 def _error(error):

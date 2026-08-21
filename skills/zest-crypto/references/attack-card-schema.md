@@ -66,17 +66,28 @@ constraints: Constraints
 
 An `InputArtifact` has `id`, a normalized case-relative `path`, 64 lowercase
 hexadecimal `sha256`, and `media_type`. `Capability` has `command`, `available`,
-and `version` (a string or `null`). `constraints.network` is `disabled` or
-`allowed` and defaults to `disabled`; `max_seconds`, `max_memory_mb`, and
-`max_oracle_queries` are non-negative integers when present. During ranking, the
-effective `oracle.query_budget` is the lower of its observed fact value and
-`constraints.max_oracle_queries` when both exist.
+and `version` (a string or `null`). `constraints.network` and
+`constraints.oracle_access` are each `disabled` or `allowed` and each defaults
+to `disabled`; `max_seconds`, `max_memory_mb`, and `max_oracle_queries` are
+non-negative integers when present. `network` records general case authorization
+for network use, such as web research. `oracle_access` separately records
+authorization to interact with live challenge or oracle endpoints. During
+ranking, the effective `oracle.query_budget` is the lower of its observed fact
+value and `constraints.max_oracle_queries` when both exist.
 
 Each fact has `id`, `key`, `value`, `value_type`, `status`, and `evidence`.
 The allowed value types are `boolean`, `integer`, `number`, `string`,
 `integer_list`, and `string_list`. A Boolean is not an integer. List values
 become immutable tuples after parsing. A `number` must be finite: `NaN`,
 `Infinity`, and a JSON decimal that overflows to infinity are invalid.
+
+The validator and ranker read only regular, non-symlink UTF-8 files of at most
+1,000,000 bytes. Their JSON boundary rejects duplicate object keys, nesting
+deeper than 256 containers, more than 50,000 decoded nodes, and decimal integer
+tokens longer than 4,096 digits. The explicit integer limit keeps Python 3.8+
+behavior deterministic. The fingerprint helper accepts at most 16 regular input
+files and 1,000,000 bytes in total, and bounds extracted lists, Python AST nodes,
+and pairwise-GCD work before deriving facts.
 
 `status` is `observed`, `derived`, or `inferred`.
 
@@ -85,6 +96,11 @@ become immutable tuples after parsing. A `number` must be finite: `NaN`,
   and a non-empty `rationale` describing the derivation. A derived fact cannot
   cite itself, and the derived-fact source graph cannot contain a cycle.
 - Inferred evidence requires a non-empty `rationale`.
+
+A canonical `construction.source_anchors` string found inside untrusted source
+text is only an inferred hint: its shape does not attest that the input bytes
+match the named repository object. An observed anchor requires external
+attestation that binds repository, commit, path, line range, and input content.
 
 The finite v1 fact vocabulary is:
 
@@ -197,7 +213,10 @@ have `id`, `when`, and `reason`.
 
 `expected_cost.class` is `low`, `medium`, `high`, or `oracle-bound`; the fixed
 ranking penalty is respectively `0`, `10`, `25`, or `15`, subtracted exactly
-once after matched signal weights are summed. It also has non-empty `notes`.
+once after matched signal weights are summed. `oracle-bound` cards require both
+`constraints.network` and `constraints.oracle_access` to be `allowed`; they are
+blocked when either constraint is disabled, after ordinary hard requirements
+have had a chance to reject or block the card. It also has non-empty `notes`.
 
 `tooling` entries have `command`, Boolean `required`, string-array `packages`,
 and `reason`. `template` is `null` or a normalized package-relative path. It

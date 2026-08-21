@@ -15,7 +15,7 @@ proof. For an encoding-only blob or known-parameter byte transform, use
 2. Run `fingerprint.py`, or record the same facts manually when it is unavailable.
 3. Validate and rank local AttackCards; do not let a score override a hard precondition.
 4. Probe the highest eligible cards cheaply before starting an expensive solver.
-5. Use primary-source paper research only when local cards miss and the case authorizes network access.
+5. Use primary-source paper research only when local cards miss and the case authorizes web research; live challenge or oracle endpoints require both `constraints.network: "allowed"` and `constraints.oracle_access: "allowed"`.
 6. Copy a solver template into the case, record tool versions, and run it with a stated bound.
 7. Prove the result, or mark the attempt rejected, blocked, or unsupported.
 

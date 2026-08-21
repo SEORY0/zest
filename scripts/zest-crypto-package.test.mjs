@@ -18,6 +18,7 @@ const splitPythonModules = new Set([
   'zest_crypto_conditions.py',
   'zest_crypto_documents.py',
   'zest_crypto_fingerprint_extract.py',
+  'zest_crypto_input.py',
   'zest_crypto_parse.py',
   'zest_crypto_parse_catalog.py',
   'zest_crypto_parse_conditions.py',

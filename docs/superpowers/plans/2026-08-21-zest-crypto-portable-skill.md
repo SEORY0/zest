@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-20-zest-crypto-portable-skill-design.md`
 
+**Supersession note:** This plan implements the approved current-year evaluation addendum and supersedes the earlier design draft's eight-blind-manifest/three-runnable acceptance gate. The release gate is five pinned 2026 fixtures, two independently solved end-to-end proofs (`lfstream` and `Rotor Cipher`), and three honest blocked reports (`MAT347`, `tokencrypt`, and `kproof`), matching `docs/evals/2026-zest-crypto.md`.
+
 ## Global Constraints
 
 - The published skill remains standalone under `skills/zest-crypto/` and must not require companion skill files.

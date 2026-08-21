@@ -32,6 +32,10 @@ from zest_crypto_types import (
 Predicate = Callable[[FactValue, Optional[FactValue]], bool]
 Gate = Union[Rule, NegativeMatch]
 COST_PENALTIES: Dict[CostClass, int] = {CostClass.LOW: 0, CostClass.MEDIUM: 10, CostClass.HIGH: 25, CostClass.ORACLE_BOUND: 15}
+NETWORK_DISABLED_RULE_ID = "constraint:network-disabled"
+NETWORK_DISABLED_REASON = "Network access is disabled, so oracle-bound cards that require interactive oracle queries are blocked."
+ORACLE_ACCESS_DISABLED_RULE_ID = "constraint:oracle-access-disabled"
+ORACLE_ACCESS_DISABLED_REASON = "Oracle access is disabled, so oracle-bound cards that require interactive oracle queries are blocked."
 
 
 @dataclass(frozen=True)
@@ -245,17 +249,21 @@ def _rank_cards(fingerprint: Fingerprint, cards: Tuple[AttackCard, ...], fingerp
     if budget is not None and limit is not None and isinstance(budget.value, int) and not isinstance(budget.value, bool):
         facts[budget.key] = replace(budget, value=min(budget.value, limit))
     capabilities = {capability.command: capability for capability in fingerprint.capabilities}
-    evaluations = tuple(_rank_card(card, facts, capabilities) for card in cards)
+    evaluations = tuple(_rank_card(card, facts, capabilities, fingerprint.constraints.network, fingerprint.constraints.oracle_access) for card in cards)
     eligible = tuple(sorted((item for item in evaluations if item.state is CardState.ELIGIBLE), key=lambda item: (-_required_score(item), str(item.card_id))))
     blocked = tuple(sorted((item for item in evaluations if item.state is CardState.BLOCKED), key=lambda item: str(item.card_id)))
     rejected = tuple(sorted((item for item in evaluations if item.state is CardState.REJECTED), key=lambda item: str(item.card_id)))
     return RankReport(fingerprint.schema_version, fingerprint_sha256, catalog_sha256, eligible, blocked, rejected)
 
 
-def _rank_card(card: AttackCard, facts: FactIndex, capabilities: Dict[str, Capability]) -> CardEvaluation:
+def _rank_card(card: AttackCard, facts: FactIndex, capabilities: Dict[str, Capability], network: str, oracle_access: str) -> CardEvaluation:
     classification = classify_card(card, facts)
     if classification.state is not CardState.ELIGIBLE:
         return classification
+    if card.expected_cost.cost_class is CostClass.ORACLE_BOUND and network != "allowed":
+        return CardEvaluation(card.id, CardState.BLOCKED, None, (), (), (), (), NETWORK_DISABLED_RULE_ID, NETWORK_DISABLED_REASON)
+    if card.expected_cost.cost_class is CostClass.ORACLE_BOUND and oracle_access != "allowed":
+        return CardEvaluation(card.id, CardState.BLOCKED, None, (), (), (), (), ORACLE_ACCESS_DISABLED_RULE_ID, ORACLE_ACCESS_DISABLED_REASON)
     missing_tool = next((tool for tool in card.tooling if tool.required and (tool.command not in capabilities or not capabilities[tool.command].available)), None)
     if missing_tool is not None:
         return CardEvaluation(card.id, CardState.BLOCKED, None, (), (), (), (), "tool:{0}".format(missing_tool.command), missing_tool.reason)

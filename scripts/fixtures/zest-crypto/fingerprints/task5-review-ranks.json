@@ -11,7 +11,7 @@
       {"id": "negatives", "key": "construction.negative_matches_checked", "value": ["paper.wagner.generalized-birthday"], "value_type": "string_list", "status": "observed", "evidence": {"input_id": "source", "locator": "routing check"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": false, "version": null}],
-    "constraints": {"network": "disabled", "max_seconds": 30, "max_memory_mb": 512, "max_oracle_queries": 670}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_seconds": 30, "max_memory_mb": 512, "max_oracle_queries": 670}
   },
   "mat347_unrelated_anchor": {
     "schema_version": 2,
@@ -24,7 +24,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "toy replay"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 670}
   },
   "mat347_standard_ecdsa": {
     "schema_version": 2,
@@ -37,7 +37,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "standard ECDSA toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 670}
   },
   "mat347_independent_lists": {
     "schema_version": 2,
@@ -51,7 +51,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "toy replay"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 670}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 670}
   },
   "eclcg_valid": {
     "schema_version": 2,
@@ -68,7 +68,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
-    "constraints": {"network": "disabled", "max_seconds": 3600, "max_memory_mb": 4096}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_seconds": 3600, "max_memory_mb": 4096}
   },
   "eclcg_same_modulus": {
     "schema_version": 2,
@@ -85,7 +85,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "generic toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
-    "constraints": {"network": "disabled"}
+    "constraints": {"network": "disabled", "oracle_access": "disabled"}
   },
   "eclcg_unrelated_anchor": {
     "schema_version": 2,
@@ -102,7 +102,7 @@
       {"id": "toy", "key": "construction.toy_invariant_verified", "value": true, "value_type": "boolean", "status": "observed", "evidence": {"input_id": "source", "locator": "cross-modulus toy"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}, {"command": "sage", "available": true, "version": "test"}],
-    "constraints": {"network": "disabled"}
+    "constraints": {"network": "disabled", "oracle_access": "disabled"}
   },
   "cbc_insufficient": {
     "schema_version": 2,
@@ -116,7 +116,7 @@
       {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 257}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 257}
   },
   "cbc_constraint_capped": {
     "schema_version": 2,
@@ -130,7 +130,7 @@
       {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 257}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 257}
   },
   "cbc_sufficient": {
     "schema_version": 2,
@@ -144,6 +144,6 @@
       {"id": "scope", "key": "oracle.recovery_bytes", "value": 1, "value_type": "integer", "status": "observed", "evidence": {"input_id": "transcript", "locator": "declared probe scope"}}
     ],
     "capabilities": [{"command": "python3", "available": true, "version": "3.8.10"}],
-    "constraints": {"network": "disabled", "max_oracle_queries": 258}
+    "constraints": {"network": "disabled", "oracle_access": "disabled", "max_oracle_queries": 258}
   }
 }

@@ -22,7 +22,7 @@ def _fingerprint_document(fingerprint: Fingerprint) -> Dict[str, JsonValue]:
         "schema_version": fingerprint.schema_version, "case_id": fingerprint.case_id,
         "inputs": [{"id": item.id, "path": item.path, "sha256": item.sha256, "media_type": item.media_type} for item in fingerprint.inputs], "facts": [_fact_document(fact, fingerprint.schema_version) for fact in fingerprint.facts],
         "capabilities": [{"command": item.command, "available": item.available, "version": item.version} for item in fingerprint.capabilities],
-        "constraints": {"network": fingerprint.constraints.network, "max_seconds": fingerprint.constraints.max_seconds, "max_memory_mb": fingerprint.constraints.max_memory_mb, "max_oracle_queries": fingerprint.constraints.max_oracle_queries},
+        "constraints": {"network": fingerprint.constraints.network, "oracle_access": fingerprint.constraints.oracle_access, "max_seconds": fingerprint.constraints.max_seconds, "max_memory_mb": fingerprint.constraints.max_memory_mb, "max_oracle_queries": fingerprint.constraints.max_oracle_queries},
     }
 
 

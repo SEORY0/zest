@@ -31,6 +31,7 @@
   ],
   "constraints": {
     "network": "disabled",
+    "oracle_access": "disabled",
     "max_seconds": 30,
     "max_memory_mb": 1024,
     "max_oracle_queries": 0

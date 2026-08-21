@@ -11,6 +11,7 @@ const ranker = join(root, 'skills', 'zest-crypto', 'scripts', 'rank_attack_cards
 const catalogPath = join(root, 'skills', 'zest-crypto', 'references', 'attack-cards.json');
 const casesPath = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json');
 const coastSourcePath = join(root, 'scripts', 'fixtures', 'zest-crypto', 'sources', 'coast-prime-degrees.json');
+const kproofPath = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', '2026', 'kproof.json');
 
 function runRanker(fingerprintPath) {
   return new Promise((resolve, reject) => {
@@ -62,6 +63,14 @@ function fingerprint(caseId, facts, capabilities) {
     facts,
     capabilities,
     constraints: { network: 'disabled', max_memory_mb: 4096, max_seconds: 3600 },
+  };
+}
+
+function withConstraints(document, constraints) {
+  return {
+    ...document,
+    case_id: `${document.case_id}-constraints-${Object.entries(constraints).map(([key, value]) => `${key}-${value}`).join('-')}`,
+    constraints: { ...document.constraints, ...constraints },
   };
 }
 
@@ -192,11 +201,41 @@ test('coast rank eligibility uses the 128-degree count from both pinned source l
     'paper.csidh.auxiliary-point-leak').state, 'rejected');
 });
 
-test('CBC one-byte probe requires the declared worst-case budget under case constraints', async () => {
+test('CBC one-byte probe rejects under-budget cases before network authorization', async () => {
   const cases = JSON.parse(await readFile(casesPath, 'utf8'));
   assert.equal(entry(await rank(cases.cbc_insufficient), 'oracle.cbc-padding').state, 'rejected');
   assert.equal(entry(await rank(cases.cbc_constraint_capped), 'oracle.cbc-padding').state, 'rejected');
-  assert.equal(entry(await rank(cases.cbc_sufficient), 'oracle.cbc-padding').state, 'eligible');
+  assert.equal(entry(await rank(withConstraints(cases.cbc_insufficient, { network: 'allowed', oracle_access: 'allowed' })), 'oracle.cbc-padding').state, 'rejected');
+  assert.equal(entry(await rank(withConstraints(cases.cbc_constraint_capped, { network: 'allowed', oracle_access: 'allowed' })), 'oracle.cbc-padding').state, 'rejected');
+});
+
+test('CBC one-byte probe requires independent network and oracle authorization', async () => {
+  const cases = JSON.parse(await readFile(casesPath, 'utf8'));
+  const disabled = entry(await rank(cases.cbc_sufficient), 'oracle.cbc-padding');
+  assert.deepEqual(
+    { state: disabled.state, ruleId: disabled.rule_id },
+    { state: 'blocked', ruleId: 'constraint:network-disabled' },
+  );
+  const oracleOnly = entry(await rank(withConstraints(cases.cbc_sufficient, { oracle_access: 'allowed' })), 'oracle.cbc-padding');
+  assert.deepEqual(
+    { state: oracleOnly.state, ruleId: oracleOnly.rule_id },
+    { state: 'blocked', ruleId: 'constraint:network-disabled' },
+  );
+  const networkOnly = entry(await rank(withConstraints(cases.cbc_sufficient, { network: 'allowed' })), 'oracle.cbc-padding');
+  assert.deepEqual(
+    { state: networkOnly.state, ruleId: networkOnly.rule_id },
+    { state: 'blocked', ruleId: 'constraint:oracle-access-disabled' },
+  );
+  assert.equal(entry(await rank(withConstraints(cases.cbc_sufficient, { network: 'allowed', oracle_access: 'allowed' })), 'oracle.cbc-padding').state, 'eligible');
+});
+
+test('kproof remains blocked by its inferred authorization gate', async () => {
+  const report = await rank(JSON.parse(await readFile(kproofPath, 'utf8')));
+  const kproof = entry(report, 'oracle.goldwasser-micali.replication');
+  assert.deepEqual(
+    { state: kproof.state, ruleId: kproof.rule_id },
+    { state: 'blocked', ruleId: 'authorized-gm-wrapper-oracle' },
+  );
 });
 
 test('challenge-faithful null-template and wrapper procedures expose executable stages', async () => {

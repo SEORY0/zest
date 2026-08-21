@@ -107,6 +107,7 @@ class Constraints:
     max_seconds: Optional[int]
     max_memory_mb: Optional[int]
     max_oracle_queries: Optional[int]
+    oracle_access: str = "disabled"
 
 
 @dataclass(frozen=True)

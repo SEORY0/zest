@@ -137,6 +137,18 @@ function runValidatorWith(interpreter, catalogPath) {
   });
 }
 
+function runValidatorBounded(catalogPath, timeout) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [validator, catalogPath], { cwd: root, timeout }, (error, stdout, stderr) => {
+      if (error && typeof error.code !== 'number' && !error.killed) {
+        reject(error);
+        return;
+      }
+      resolve({ code: error && typeof error.code === 'number' ? error.code : null, stderr, stdout, timedOut: error ? error.killed : false });
+    });
+  });
+}
+
 function commandAvailable(command) {
   return new Promise((resolve) => {
     execFile(command, ['--version'], (error) => resolve(error === null));
@@ -163,6 +175,18 @@ function runRanker(fingerprintPath, catalogPath, environment = process.env) {
         return;
       }
       resolve({ code: error ? error.code : 0, stderr, stdout });
+    });
+  });
+}
+
+function runRankerBounded(fingerprintPath, catalogPath, timeout) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [ranker, fingerprintPath, catalogPath], { cwd: root, timeout }, (error, stdout, stderr) => {
+      if (error && typeof error.code !== 'number' && !error.killed) {
+        reject(error);
+        return;
+      }
+      resolve({ code: error && typeof error.code === 'number' ? error.code : null, stderr, stdout, timedOut: error ? error.killed : false });
     });
   });
 }
@@ -599,6 +623,79 @@ test('validator normalizes excessively nested JSON at the CLI boundary', async (
       issues: [{ path: '$', code: 'input-too-deep' }],
     });
   });
+});
+
+test('validator enforces deterministic JSON integer token limits across available runtimes', async (t) => {
+  // Given: integer tokens exactly at and just past the portable 4096 decimal digit boundary.
+  const interpreters = ['python3'];
+  for (const command of ['python3.8', 'python3.11']) {
+    if (await commandAvailable(command)) interpreters.push(command);
+  }
+  const atLimit = `[${'9'.repeat(4096)}]`;
+  const overLimit = `[${'9'.repeat(4097)}]`;
+
+  for (const interpreter of [...new Set(interpreters)]) {
+    await withTemporaryCatalog(`zest-crypto-int-${interpreter.replace('.', '')}-`, atLimit, async (fixturePath) => {
+      // When: a 4096-digit JSON integer crosses the public decoder boundary.
+      const result = await runValidatorWith(interpreter, fixturePath);
+
+      // Then: it reaches AttackCard parsing instead of being rejected as invalid JSON.
+      assert.equal(result.code, 2, interpreter);
+      assert.notEqual(JSON.parse(result.stdout).issues[0].code, 'invalid-json', interpreter);
+    });
+    await withTemporaryCatalog(`zest-crypto-int-over-${interpreter.replace('.', '')}-`, overLimit, async (fixturePath) => {
+      // When: a 4097-digit JSON integer crosses the same boundary.
+      const result = await runValidatorWith(interpreter, fixturePath);
+
+      // Then: the portable explicit limit rejects it before schema parsing on every runtime.
+      assert.equal(result.code, 2, interpreter);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        ok: false,
+        issues: [{ path: '$', code: 'invalid-json' }],
+      });
+    });
+  }
+
+  if (interpreters.length === 1) t.diagnostic('python3.8/python3.11 were unavailable; checked default python3 only');
+});
+
+test('validator rejects bounded filesystem and JSON resource hazards', async () => {
+  // Given: symlink, FIFO, oversized, duplicate-key, and excessive-node inputs.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-validator-bounds-'));
+  const regular = join(fixtureDirectory, 'regular.json');
+  const link = join(fixtureDirectory, 'regular-link.json');
+  const fifo = join(fixtureDirectory, 'catalog.pipe');
+  const oversized = join(fixtureDirectory, 'oversized.json');
+  const duplicate = join(fixtureDirectory, 'duplicate.json');
+  const tooManyNodes = join(fixtureDirectory, 'nodes.json');
+  await writeFile(regular, '[]', 'utf8');
+  await symlink(regular, link);
+  assert.equal((await runPython('import os, sys\nos.mkfifo(sys.argv[1])', [fifo])).code, 0);
+  await writeFile(oversized, Buffer.alloc(1_000_001, 0x20));
+  await writeFile(duplicate, '[{"id":"one","id":"two"}]', 'utf8');
+  await writeFile(tooManyNodes, `[${Array.from({ length: 50001 }, () => '0').join(',')}]`, 'utf8');
+
+  try {
+    // When: each hazard crosses the validator CLI boundary.
+    const fifoResult = await runValidatorBounded(fifo, 500);
+    const cases = [
+      [await runValidator(link), 'input-symlink'],
+      [fifoResult, 'input-not-file'],
+      [await runValidator(oversized), 'input-too-large'],
+      [await runValidator(duplicate), 'invalid-json'],
+      [await runValidator(tooManyNodes), 'input-too-complex'],
+    ];
+
+    // Then: every failure is structured and the FIFO path returns before the timeout.
+    assert.equal(fifoResult.timedOut, false);
+    for (const [result, expectedCode] of cases) {
+      assert.equal(result.code, 2);
+      assert.equal(result.stderr, '');
+      assert.equal(JSON.parse(result.stdout).issues[0].code, expectedCode);
+    }
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
 });
 
 test('validator rejects an embedded NUL template path without a traceback', async () => {
@@ -1244,6 +1341,50 @@ test('ranker CLI rejects duplicate fact-key status and value permutations', asyn
   }
 });
 
+test('ranker rejects bounded input hazards before ranking', async () => {
+  // Given: valid ranking inputs plus hazardous alternate fingerprint/catalog paths.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-ranker-bounds-'));
+  const fingerprintDocument = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  const validFingerprint = join(fixtureDirectory, 'fingerprint.json');
+  const validCatalog = join(fixtureDirectory, 'catalog.json');
+  const invalidUtf8 = join(fixtureDirectory, 'invalid.json');
+  const link = join(fixtureDirectory, 'fingerprint-link.json');
+  const fifo = join(fixtureDirectory, 'fingerprint.pipe');
+  const oversized = join(fixtureDirectory, 'oversized-catalog.json');
+  await writeFile(validFingerprint, JSON.stringify(fingerprintDocument), 'utf8');
+  await writeFile(validCatalog, JSON.stringify([card]), 'utf8');
+  await writeFile(invalidUtf8, Buffer.from([0xff]));
+  await symlink(validFingerprint, link);
+  assert.equal((await runPython('import os, sys\nos.mkfifo(sys.argv[1])', [fifo])).code, 0);
+  await writeFile(oversized, Buffer.alloc(1_000_001, 0x20));
+
+  try {
+    // When: the ranker receives each hazardous path through its public CLI.
+    const fifoResult = await runRankerBounded(fifo, validCatalog, 500);
+    const cases = [
+      [await runRanker(invalidUtf8, validCatalog), 'input-undecodable'],
+      [await runRanker(link, validCatalog), 'input-symlink'],
+      [fifoResult, 'input-not-file'],
+      [await runRanker(validFingerprint, oversized), 'input-too-large'],
+    ];
+
+    // Then: no failure reaches scoring or hangs on a FIFO.
+    assert.equal(fifoResult.timedOut, false);
+    for (const [result, expectedCode] of cases) {
+      assert.equal(result.code, 2);
+      assert.equal(result.stderr, '');
+      assert.deepEqual(JSON.parse(result.stdout), {
+        ok: false,
+        issues: [{ path: '$', code: expectedCode }],
+      });
+    }
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
 test('fingerprint emits literal RSA broadcast facts without mutating its input', async () => {
   // Given: an immutable synthetic source with every broadcast relationship stated literally.
   assert.equal(existsSync(fingerprint), true, 'fingerprint CLI is missing');
@@ -1313,12 +1454,91 @@ test('fingerprint records canonical paper IDs and one inferred family clue', asy
   assert.equal(paperIds.status, 'observed');
   assert.deepEqual(paperIds.value, ['doi:10.1007/3-540-39799-X_29', 'eprint:2020/852']);
   const anchors = fact(document, 'construction.source_anchors');
-  assert.equal(anchors.status, 'observed');
+  assert.equal(anchors.status, 'inferred');
   assert.deepEqual(anchors.value, ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20']);
+  assert.match(anchors.evidence.rationale, /does not attest repository content/);
   const family = fact(document, 'construction.canonical_family');
   assert.equal(family.status, 'inferred');
   assert.equal(family.value, 'paper.frost.threshold-signature');
   assert.match(family.evidence.rationale, /FROST/);
+});
+
+test('fingerprint rejects excessive Python AST work within the byte limit', async () => {
+  // Given: a regular source file below the byte cap but above the 50,000-node AST cap.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-ast-bound-'));
+  const source = join(fixtureDirectory, 'many-nodes.py');
+  await writeFile(source, `${Array.from({ length: 13000 }, (_, index) => `v${index} = 0`).join('\n')}\n`, 'utf8');
+
+  try {
+    // When: the fingerprint CLI parses the bounded file.
+    const result = await runFingerprint('ast-node-bound', [source]);
+
+    // Then: extraction stops before clue/fact scans can traverse an unbounded tree.
+    assert.equal(result.code, 2, result.stderr);
+    assert.equal(result.stderr, '');
+    assert.deepEqual(JSON.parse(result.stdout), {
+      ok: false,
+      issues: [{ path: '$[1]', code: 'input-too-complex' }],
+    });
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint inferred source anchors do not satisfy ranker hard gates', async () => {
+  // Given: source text that declares a valid-looking immutable source anchor.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-anchor-gate-'));
+  const source = join(fixtureDirectory, 'anchors.py');
+  const anchor = 'github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20';
+  await writeFile(source, `source_anchors = ${JSON.stringify([anchor])}\n`, 'utf8');
+
+  try {
+    // When: that generated fingerprint is ranked against a card requiring the anchor as hard evidence.
+    const fingerprintResult = await runFingerprint('anchor-hard-gate', [source]);
+    assert.equal(fingerprintResult.code, 0, fingerprintResult.stderr);
+    const generatedFingerprint = JSON.parse(fingerprintResult.stdout);
+    const anchorFact = fact(generatedFingerprint, 'construction.source_anchors');
+    assert.equal(anchorFact.status, 'inferred');
+    const card = await documentedAttackCard();
+    card.tooling = [];
+    card.requires = [{
+      id: 'attested-anchor-required',
+      when: { fact: 'construction.source_anchors', op: 'contains', value: anchor },
+      reason: 'The anchor must be externally attested.',
+    }];
+    card.signals = [];
+
+    await withTemporaryRankingInputs('zest-crypto-anchor-hard-gate-', generatedFingerprint, [card], async (fingerprintPath, catalogPath) => {
+      const rankResult = await runRanker(fingerprintPath, catalogPath);
+
+      // Then: shape-only source text provenance is blocked, not accepted as observed proof.
+      assert.equal(rankResult.code, 0, rankResult.stderr);
+      assert.deepEqual(JSON.parse(rankResult.stdout).blocked, [{
+        card_id: 'rsa.hastad.broadcast',
+        rule_id: 'attested-anchor-required',
+        reason: 'The anchor must be externally attested.',
+        evidence_fact_ids: [],
+      }]);
+    });
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint parser preserves externally attested observed source anchors', async () => {
+  // Given: parsed fixture JSON whose source anchors were attested outside source-text extraction.
+  const fixture = JSON.parse(await readFile(join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json'), 'utf8'));
+  const document = Object.values(fixture).find((item) => item.facts.some(({ key }) => key === 'construction.source_anchors'));
+  assert.notEqual(document, undefined);
+  const anchor = document.facts.find(({ key }) => key === 'construction.source_anchors');
+  assert.notEqual(anchor, undefined);
+  assert.equal(anchor.status, 'observed');
+
+  // When: the public parser boundary receives the fixture unchanged.
+  const parsed = await parseFingerprintDocument(document);
+
+  // Then: observed status remains valid for directly supplied externally attested anchors.
+  assert.deepEqual(parsed, { ok: true });
 });
 
 test('fingerprint preserves all exact family clues without claiming an ambiguous canonical family', async () => {

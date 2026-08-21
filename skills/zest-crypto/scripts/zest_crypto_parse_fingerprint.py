@@ -158,17 +158,21 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
     constraints_value = _object(
         value["constraints"],
         "$.constraints",
-        ("network", "max_seconds", "max_memory_mb", "max_oracle_queries"),
+        ("network", "oracle_access", "max_seconds", "max_memory_mb", "max_oracle_queries"),
         (),
     )
     network = constraints_value.get("network", "disabled")
     if network not in ("disabled", "allowed"):
         _fail("$.constraints.network", "invalid-network-constraint", "expected disabled or allowed")
+    oracle_access = constraints_value.get("oracle_access", "disabled")
+    if oracle_access not in ("disabled", "allowed"):
+        _fail("$.constraints.oracle_access", "invalid-oracle-access-constraint", "expected disabled or allowed")
     constraints = Constraints(
         network=network,
         max_seconds=_optional_nonnegative_integer(constraints_value, "max_seconds", "$.constraints"),
         max_memory_mb=_optional_nonnegative_integer(constraints_value, "max_memory_mb", "$.constraints"),
         max_oracle_queries=_optional_nonnegative_integer(constraints_value, "max_oracle_queries", "$.constraints"),
+        oracle_access=oracle_access,
     )
     return Fingerprint(schema_version, _string(value["case_id"], "$.case_id"), inputs, tuple(facts), tuple(capabilities), constraints)
 

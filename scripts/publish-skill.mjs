@@ -2,13 +2,13 @@
 /**
  * Mirrors `skills/` into the standalone SEORY0/zest-skill repository.
  *
- * The monorepo stays the source of truth — `references/operations.md` is
- * generated from the operation registry — but people installing the skill
- * should not have to clone the whole workbench to get it. This publishes a
- * repo that contains nothing but the skills.
+ * The monorepo stays the source of truth. Registry-backed skills generate
+ * `references/operations.md`, while zest-crypto ships its own attack catalog.
+ * People installing one skill should not have to clone the whole workbench, so
+ * this publishes a repo that contains nothing but the committed skill files.
  *
- *   npm run publish:skill              # push if anything changed
  *   npm run publish:skill -- --dry-run # show what would change
+ *   npm run publish:skill -- --publish # intentionally push committed HEAD
  *   npm run publish:skill -- --help    # show safe usage
  *
  * Requires `gh` to be authenticated with push access to the target repo.
@@ -16,7 +16,7 @@
 
 import { execFileSync } from 'node:child_process';
 import {
-  chmodSync, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+  chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -24,41 +24,52 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = 'SEORY0/zest-skill';
-const USAGE = 'Usage: node scripts/publish-skill.mjs [--dry-run | --help]';
+const USAGE = 'Usage: node scripts/publish-skill.mjs (--dry-run | --publish | --help)';
 const cliArguments = process.argv.slice(2);
 
 if (cliArguments.length === 1 && (cliArguments[0] === '--help' || cliArguments[0] === '-h')) {
   console.log(USAGE);
   process.exit(0);
 }
-if (cliArguments.length > 1 || (cliArguments.length === 1 && cliArguments[0] !== '--dry-run')) {
+if (cliArguments.length !== 1 || (cliArguments[0] !== '--dry-run' && cliArguments[0] !== '--publish')) {
   console.error(`Unsupported arguments: ${cliArguments.join(' ')}`);
   console.error(USAGE);
   process.exit(2);
 }
 
-const dryRun = cliArguments.length === 1;
-
 const run = (cmd, args, cwd) =>
   execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-function readTrackedSkillManifest() {
+const dryRun = cliArguments[0] === '--dry-run';
+const sourceCommit = run('git', ['rev-parse', '--verify', 'HEAD^{commit}'], root);
+
+function readGitBlob(objectId) {
+  return execFileSync(
+    'git',
+    ['cat-file', 'blob', objectId],
+    { cwd: root, encoding: 'buffer', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+}
+
+function readTrackedSkillManifest(commit) {
   const output = execFileSync(
     'git',
-    ['ls-files', '--stage', '-z', '--', 'skills'],
+    ['ls-tree', '-rz', '--full-tree', commit, 'skills'],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
   );
   const entries = output.split('\0').filter(Boolean).map((record) => {
     const separator = record.indexOf('\t');
     if (separator === -1) throw new Error('Malformed git skill manifest entry.');
-    const [mode, objectId, stage] = record.slice(0, separator).split(' ');
+    const [mode, type, objectId] = record.slice(0, separator).split(' ');
     const path = record.slice(separator + 1);
-    if (!/^[0-9a-f]+$/.test(objectId) || !/^[0-3]$/.test(stage)) {
+    if (!/^[0-9a-f]{40,64}$/.test(objectId)) {
       throw new Error(`Malformed git skill manifest metadata: ${path}`);
     }
-    if (stage !== '0') throw new Error(`Tracked skill entry is unmerged: ${path}`);
     if (mode !== '100644' && mode !== '100755') {
       throw new Error(`Tracked skill entry has unsupported mode ${mode}: ${path}`);
+    }
+    if (type !== 'blob') {
+      throw new Error(`Tracked skill entry has unsupported type ${type}: ${path}`);
     }
 
     const components = path.split('/');
@@ -74,23 +85,7 @@ function readTrackedSkillManifest() {
       throw new Error(`Tracked skill path is not package-contained: ${path}`);
     }
 
-    for (let depth = 1; depth <= components.length; depth += 1) {
-      let metadata;
-      try {
-        metadata = lstatSync(resolve(root, ...components.slice(0, depth)));
-      } catch (error) {
-        if (error.code === 'ENOENT') throw new Error(`Tracked skill file is missing: ${path}`);
-        throw error;
-      }
-      if (metadata.isSymbolicLink()) {
-        throw new Error(`Tracked skill path traverses a symbolic link: ${path}`);
-      }
-      const isLeaf = depth === components.length;
-      if ((isLeaf && !metadata.isFile()) || (!isLeaf && !metadata.isDirectory())) {
-        throw new Error(`Tracked skill path is not an ordinary package file: ${path}`);
-      }
-    }
-    return { mode, path, source };
+    return { content: readGitBlob(objectId), mode, path };
   });
   return entries.sort((left, right) => {
     if (left.path < right.path) return -1;
@@ -99,12 +94,12 @@ function readTrackedSkillManifest() {
   });
 }
 
-const sourceManifest = readTrackedSkillManifest();
+const sourceManifest = readTrackedSkillManifest(sourceCommit);
 const manifestByPath = new Map(sourceManifest.map((entry) => [entry.path, entry]));
 
 /** Pull `name` and `description` out of a SKILL.md front matter block. */
-function readFrontMatter(path) {
-  const text = readFileSync(path, 'utf8');
+function readFrontMatter(path, content) {
+  const text = content.toString('utf8');
   const match = /^---\n([\s\S]*?)\n---/.exec(text);
   if (!match) throw new Error(`${path} has no front matter.`);
 
@@ -121,7 +116,7 @@ const skillNames = [...new Set(sourceManifest.map((entry) => entry.path.split('/
 const skills = skillNames.map((name) => {
   const entrypoint = manifestByPath.get(`skills/${name}/SKILL.md`);
   if (!entrypoint) throw new Error(`Tracked skill package has no SKILL.md: skills/${name}`);
-  return { dir: name, ...readFrontMatter(entrypoint.source) };
+  return { dir: name, ...readFrontMatter(entrypoint.path, entrypoint.content) };
 });
 
 // The front-matter name is what agents match on, so a mismatch with the
@@ -192,9 +187,10 @@ a remotely hosted page.
 ## Note
 
 This repository is generated. \`skills/\` is mirrored from the
-[main repository](https://github.com/SEORY0/zest), where \`references/operations.md\` is built
-from the operation registry itself — so the catalogue an agent reads always matches the code.
-Open issues and pull requests there.
+[main repository](https://github.com/SEORY0/zest). The \`zest\`, \`zest-ctf\`, and
+\`zest-triage\` operation references are built from the operation registry; \`zest-crypto\`
+ships its own reviewed attack-card catalogue and validators. Open issues and pull requests in
+the main repository.
 
 MIT licensed.
 `;
@@ -242,7 +238,7 @@ function publish() {
     for (const entry of sourceManifest) {
       const destination = join(checkout, ...entry.path.split('/'));
       mkdirSync(dirname(destination), { recursive: true });
-      copyFileSync(entry.source, destination);
+      writeFileSync(destination, entry.content);
       chmodSync(destination, entry.mode === '100755' ? 0o755 : 0o644);
     }
     writeFileSync(join(checkout, 'README.md'), buildReadme(), 'utf8');
@@ -262,7 +258,6 @@ function publish() {
       return;
     }
 
-    const sourceCommit = run('git', ['rev-parse', '--short', 'HEAD'], root);
     run('git', ['commit', '--quiet', '-m', `Sync skills from SEORY0/zest@${sourceCommit}`], checkout);
     run('git', ['push', '--quiet', '-u', 'origin', 'main'], checkout);
 

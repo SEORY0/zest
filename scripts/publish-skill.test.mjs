@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
-  copyFile, mkdir, mkdtemp, rm, rmdir, symlink, writeFile,
+  copyFile, mkdir, mkdtemp, readFile, rm, rmdir, symlink, writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -33,25 +33,88 @@ async function makeMissingTargetBin(directory) {
   return { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}` };
 }
 
+async function makeExistingTargetBin(directory, targetRepo, options = {}) {
+  const realGit = (await execFileAsync('which', ['git'], { encoding: 'utf8' })).stdout.trim();
+  const gitLog = join(directory, 'git.log');
+  const ghLog = join(directory, 'gh.log');
+  const fakeGh = join(directory, 'gh');
+  const fakeGit = join(directory, 'git');
+  await writeFile(fakeGh, `#!/bin/sh
+printf '%s\\n' "$*" >> "$PUBLISHER_GH_LOG"
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+  printf '{"name":"zest-skill"}\\n'
+  exit 0
+fi
+if [ "$1" = "repo" ] && [ "$2" = "create" ]; then
+  exit 97
+fi
+exit 98
+`, { encoding: 'utf8', mode: 0o700 });
+  await writeFile(fakeGit, `#!/bin/sh
+printf '%s\\n' "$*" >> "$PUBLISHER_GIT_LOG"
+if [ "$1" = "clone" ] && [ "$2" = "--quiet" ] && [ "$3" = "https://github.com/SEORY0/zest-skill.git" ]; then
+  exec "$REAL_GIT" clone --quiet "$PUBLISHER_TARGET_REPO" "$4"
+fi
+if [ "$1" = "add" ] && [ "$2" = "-A" ] && [ -n "$PUBLISHER_CAPTURE_DIR" ]; then
+  rm -rf "$PUBLISHER_CAPTURE_DIR"
+  mkdir -p "$PUBLISHER_CAPTURE_DIR"
+  cp -R . "$PUBLISHER_CAPTURE_DIR/repo"
+fi
+if [ "$1" = "commit" ] || [ "$1" = "push" ]; then
+  if [ "$PUBLISHER_ALLOW_MUTATION" = "1" ]; then
+    exit 0
+  fi
+  exit 96
+fi
+exec "$REAL_GIT" "$@"
+`, { encoding: 'utf8', mode: 0o700 });
+  return {
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH ?? ''}`,
+      PUBLISHER_ALLOW_MUTATION: options.allowMutation ? '1' : '0',
+      PUBLISHER_CAPTURE_DIR: options.captureDir ?? '',
+      PUBLISHER_GH_LOG: ghLog,
+      PUBLISHER_GIT_LOG: gitLog,
+      PUBLISHER_TARGET_REPO: targetRepo,
+      REAL_GIT: realGit,
+    },
+    ghLog,
+    gitLog,
+  };
+}
+
 async function createPublisherFixture() {
   const directory = await mkdtemp(join(tmpdir(), 'zest-publisher-fixture-'));
   await mkdir(join(directory, 'scripts'));
-  await mkdir(join(directory, 'skills', 'demo'), { recursive: true });
+  await mkdir(join(directory, 'skills', 'demo', 'assets'), { recursive: true });
   await copyFile(publisher, join(directory, 'scripts', 'publish-skill.mjs'));
   await writeFile(
     join(directory, 'skills', 'demo', 'SKILL.md'),
     '---\nname: demo\ndescription: Fixture skill.\n---\n',
     'utf8',
   );
+  await writeFile(join(directory, 'skills', 'demo', 'assets', 'resource.txt'), 'tracked resource\n', 'utf8');
   await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
   await execFileAsync('git', ['config', 'user.name', 'Publisher Test'], { cwd: directory });
   await execFileAsync('git', ['config', 'user.email', 'publisher@example.invalid'], { cwd: directory });
-  await execFileAsync('git', ['add', 'skills/demo/SKILL.md'], { cwd: directory });
+  await execFileAsync('git', ['add', 'skills'], { cwd: directory });
   await execFileAsync('git', ['commit', '--quiet', '-m', 'fixture'], { cwd: directory });
   return directory;
 }
 
-test('publisher help and unknown arguments never trigger publishing', async () => {
+async function createTargetRepo() {
+  const directory = await mkdtemp(join(tmpdir(), 'zest-publisher-target-'));
+  await execFileAsync('git', ['init', '--quiet'], { cwd: directory });
+  await execFileAsync('git', ['config', 'user.name', 'Publisher Test'], { cwd: directory });
+  await execFileAsync('git', ['config', 'user.email', 'publisher@example.invalid'], { cwd: directory });
+  await writeFile(join(directory, 'README.md'), '# Old target\n', 'utf8');
+  await execFileAsync('git', ['add', 'README.md'], { cwd: directory });
+  await execFileAsync('git', ['commit', '--quiet', '-m', 'target'], { cwd: directory });
+  return directory;
+}
+
+test('publisher help, missing mode, and unknown arguments never trigger publishing', async () => {
   // Given: a valid source fixture and a gh executable that leaves evidence if it is called.
   const directory = await createPublisherFixture();
   const fakeBin = await mkdtemp(join(tmpdir(), 'zest-publisher-argument-bin-'));
@@ -73,18 +136,40 @@ test('publisher help and unknown arguments never trigger publishing', async () =
       cwd: directory,
       env,
     });
+    const shortHelp = await run(process.execPath, [join(directory, 'scripts', 'publish-skill.mjs'), '-h'], {
+      cwd: directory,
+      env,
+    });
+    const missing = await run(process.execPath, [join(directory, 'scripts', 'publish-skill.mjs')], {
+      cwd: directory,
+      env,
+    });
     const unknown = await run(process.execPath, [join(directory, 'scripts', 'publish-skill.mjs'), '--unknown'], {
       cwd: directory,
       env,
     });
+    const multiple = await run(
+      process.execPath,
+      [join(directory, 'scripts', 'publish-skill.mjs'), '--dry-run', '--publish'],
+      { cwd: directory, env },
+    );
 
     // Then: both paths terminate locally before any GitHub target operation.
     assert.equal(help.code, 0, help.stderr || help.stdout);
     assert.match(help.stdout, /^Usage: /);
     assert.equal(help.stderr, '');
+    assert.equal(shortHelp.code, 0, shortHelp.stderr || shortHelp.stdout);
+    assert.match(shortHelp.stdout, /^Usage: /);
+    assert.equal(shortHelp.stderr, '');
+    assert.equal(missing.code, 2);
+    assert.equal(missing.stdout, '');
+    assert.match(missing.stderr, /Unsupported arguments:/);
     assert.equal(unknown.code, 2);
     assert.equal(unknown.stdout, '');
     assert.match(unknown.stderr, /Unsupported arguments:/);
+    assert.equal(multiple.code, 2);
+    assert.equal(multiple.stdout, '');
+    assert.match(multiple.stderr, /Unsupported arguments:/);
     assert.equal(existsSync(marker), false);
   } finally {
     await rm(directory, { force: true, recursive: true });
@@ -133,6 +218,85 @@ test('missing-target dry run publishes exactly tracked skill resources', async (
   }
 });
 
+test('publisher dry run mirrors committed blobs, not dirty tracked worktree bytes or symlink swaps', async () => {
+  // Given: a committed source snapshot, then dirty tracked bytes and a worktree symlink swap.
+  const directory = await createPublisherFixture();
+  const targetRepo = await createTargetRepo();
+  const fakeBin = await mkdtemp(join(tmpdir(), 'zest-publisher-existing-bin-'));
+  const captureDir = await mkdtemp(join(tmpdir(), 'zest-publisher-capture-'));
+  const assets = join(directory, 'skills', 'demo', 'assets');
+  const outside = join(directory, 'outside');
+
+  try {
+    await writeFile(
+      join(directory, 'skills', 'demo', 'SKILL.md'),
+      '---\nname: escaped\ndescription: Dirty skill.\n---\n',
+      'utf8',
+    );
+    await rm(assets, { recursive: true });
+    await mkdir(outside);
+    await writeFile(join(outside, 'resource.txt'), 'outside replacement\n', 'utf8');
+    await symlink('../../outside', assets, 'dir');
+    const { env, ghLog, gitLog } = await makeExistingTargetBin(fakeBin, targetRepo, { captureDir });
+
+    // When: dry-run builds the mirror checkout through the real publisher.
+    const result = await run(
+      process.execPath,
+      [join(directory, 'scripts', 'publish-skill.mjs'), '--dry-run'],
+      { cwd: directory, env },
+    );
+
+    // Then: captured mirror bytes come from immutable HEAD blobs, with no mutation commands.
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Dry run/);
+    assert.equal(
+      await readFile(join(captureDir, 'repo', 'skills', 'demo', 'SKILL.md'), 'utf8'),
+      '---\nname: demo\ndescription: Fixture skill.\n---\n',
+    );
+    assert.equal(
+      await readFile(join(captureDir, 'repo', 'skills', 'demo', 'assets', 'resource.txt'), 'utf8'),
+      'tracked resource\n',
+    );
+    assert.equal(readFileSync(ghLog, 'utf8').includes('repo create'), false);
+    assert.equal(readFileSync(gitLog, 'utf8').includes('commit '), false);
+    assert.equal(readFileSync(gitLog, 'utf8').includes('push '), false);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+    await rm(targetRepo, { force: true, recursive: true });
+    await rm(fakeBin, { force: true, recursive: true });
+    await rm(captureDir, { force: true, recursive: true });
+  }
+});
+
+test('publisher publish mode is the only mode that reaches commit and push', async () => {
+  // Given: a valid source snapshot and isolated fake GitHub/Git mutation endpoints.
+  const directory = await createPublisherFixture();
+  const targetRepo = await createTargetRepo();
+  const fakeBin = await mkdtemp(join(tmpdir(), 'zest-publisher-publish-bin-'));
+
+  try {
+    const { env, ghLog, gitLog } = await makeExistingTargetBin(fakeBin, targetRepo, { allowMutation: true });
+
+    // When: the exact live publishing flag is used.
+    const result = await run(
+      process.execPath,
+      [join(directory, 'scripts', 'publish-skill.mjs'), '--publish'],
+      { cwd: directory, env },
+    );
+
+    // Then: the fake live path observes commit and push, but no repository create is needed.
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Pushed to https:\/\/github\.com\/SEORY0\/zest-skill/);
+    assert.match(readFileSync(gitLog, 'utf8'), /commit --quiet -m Sync skills from SEORY0\/zest@[0-9a-f]{40}\n/);
+    assert.match(readFileSync(gitLog, 'utf8'), /push --quiet -u origin main\n/);
+    assert.equal(readFileSync(ghLog, 'utf8').includes('repo create'), false);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+    await rm(targetRepo, { force: true, recursive: true });
+    await rm(fakeBin, { force: true, recursive: true });
+  }
+});
+
 for (const scenario of [
   {
     name: 'symlink',
@@ -140,6 +304,7 @@ for (const scenario of [
     prepare: async (directory) => {
       await symlink('SKILL.md', join(directory, 'skills', 'demo', 'linked.md'));
       await execFileAsync('git', ['add', 'skills/demo/linked.md'], { cwd: directory });
+      await execFileAsync('git', ['commit', '--quiet', '-m', 'unsafe symlink'], { cwd: directory });
     },
   },
   {
@@ -152,31 +317,7 @@ for (const scenario of [
         ['update-index', '--add', '--cacheinfo', `160000,${stdout.trim()},skills/demo/nested-repo`],
         { cwd: directory },
       );
-    },
-  },
-  {
-    name: 'missing file',
-    expected: /Tracked skill file is missing: skills\/demo\/missing\.md/,
-    prepare: async (directory) => {
-      const missing = join(directory, 'skills', 'demo', 'missing.md');
-      await writeFile(missing, 'tracked then removed\n', 'utf8');
-      await execFileAsync('git', ['add', 'skills/demo/missing.md'], { cwd: directory });
-      await rm(missing);
-    },
-  },
-  {
-    name: 'file through a symlinked package directory',
-    expected: /Tracked skill path traverses a symbolic link: skills\/demo\/assets\/resource\.txt/,
-    prepare: async (directory) => {
-      const assets = join(directory, 'skills', 'demo', 'assets');
-      const outside = join(directory, 'outside');
-      await mkdir(assets);
-      await writeFile(join(assets, 'resource.txt'), 'tracked resource\n', 'utf8');
-      await execFileAsync('git', ['add', 'skills/demo/assets/resource.txt'], { cwd: directory });
-      await rm(assets, { recursive: true });
-      await mkdir(outside);
-      await writeFile(join(outside, 'resource.txt'), 'outside replacement\n', 'utf8');
-      await symlink('../../outside', assets, 'dir');
+      await execFileAsync('git', ['commit', '--quiet', '-m', 'unsafe gitlink'], { cwd: directory });
     },
   },
 ]) {

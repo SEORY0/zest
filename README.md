@@ -124,8 +124,9 @@ They are listed on
 
 The skills live in `skills/` here and are mirrored to
 [SEORY0/zest-skill](https://github.com/SEORY0/zest-skill) so installing one does not pull the
-whole workbench. This repository is the source of truth; run `npm run publish:skill` after
-changing anything under `skills/`.
+whole workbench. This repository is the source of truth; inspect changes with
+`npm run publish:skill -- --dry-run`, then use `npm run publish:skill -- --publish` for an
+intentional mirror update after committing changes under `skills/`.
 
 The skills drive the `zest` CLI, so install that too (`npm link -w @zest/cli` above).
 

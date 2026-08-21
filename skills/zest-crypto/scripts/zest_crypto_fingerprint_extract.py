@@ -7,6 +7,7 @@
 import ast
 import re
 
+from zest_crypto_input import MAX_AST_NODES, InputBoundaryError
 from zest_crypto_source import is_canonical_source_anchor
 
 
@@ -112,8 +113,13 @@ def _extract_python(text, input_index, observations):
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return
-    call_clues = {}
+    nodes = []
     for node in ast.walk(tree):
+        nodes.append(node)
+        if len(nodes) > MAX_AST_NODES:
+            raise InputBoundaryError("$[{0}]".format(input_index + 1), "input-too-complex")
+    call_clues = {}
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         name = _call_name(node.func)
@@ -121,7 +127,7 @@ def _extract_python(text, input_index, observations):
             call_clues.setdefault(name, []).append(node.func.lineno)
     if call_clues:
         _add(observations, "construction.parameter_signature", sorted(call_clues), input_index, tuple(line for lines in call_clues.values() for line in lines))
-    for node in ast.walk(tree):
+    for node in nodes:
         targets, value_node = _targets(node)
         if value_node is None:
             continue

@@ -156,7 +156,7 @@ skills/zest-crypto/
 │       ├── rsa-and-number-theory.md
 │       ├── lattices-and-small-roots.md
 │       ├── ecc-and-signatures.md
-│       ├── prngs-and-oracles.md
+│       ├── prngs-streams-and-oracles.md
 │       └── paper-derived-constructions.md
 ├── scripts/
 │   ├── fingerprint.py
@@ -747,13 +747,15 @@ An independent agent receives challenges without the intended AttackCard label. 
 - deterministic rerun behavior;
 - whether missing evidence or tools were reported accurately.
 
-The initial evaluation set contains eight blind manifests:
+Supersession note: the original blind-manifest gate called for eight manifests, with six precise labels, two ambiguous family labels, and three runnable end-to-end cases. Task 8 superseded that gate with a current-year benchmark set so acceptance tracks the shipped implementation and `docs/evals/2026-zest-crypto.md`: five pinned 2026 fixtures with exact routing, two independently solved proofs, and three honest blocked reports.
 
-- six have one precise intended AttackCard label;
-- two are intentionally ambiguous and have only an intended canonical-family label;
-- at least three are runnable end to end;
-- at least two come from official archived CTF challenges;
-- at least one requires a cited paper or paper-derived technique.
+The current evaluation set contains five blind current-year fixtures:
+
+- all five have one precise intended AttackCard label;
+- all five come from official archived 2026 CTF challenge sources;
+- all five require math-heavy, oracle, stream, symmetric, or paper-derived crypto routing;
+- two are independently solved end to end with replayable proof artifacts;
+- three are expected to report precise blocked states when source, transcript, oracle, or specialist tooling is insufficient.
 
 Synthetic fixtures may cover edge cases, but they cannot be the entire evaluation set. A challenge title and intended card ID are hidden from the solving agent until scoring.
 
@@ -780,21 +782,17 @@ Version 1 is complete when all of the following are true:
 - Its trigger description distinguishes math-heavy crypto from encoding-only CTF work.
 - The core loop produces a case manifest, ranked cards, solver artifact, and proof record.
 - The catalog contains 21 precise, validated AttackCards across the baseline families and paper-derived construction tier.
-- Six bundled solver templates execute on their corresponding fixtures.
+- Eight bundled solver templates execute on their corresponding fixtures.
 - Ranking is deterministic and explains every top-three result.
 - An unmet hard precondition cannot be overridden by heuristic score.
 - Every successful fixture has an exact mathematical or replay proof.
-- Blind forward evaluation meets these initial gates:
-  - the exact intended AttackCard appears in the top three for all six precisely labeled manifests;
-  - the exact intended AttackCard ranks first for at least four of those six manifests;
-  - the intended canonical family appears in the top three for both intentionally ambiguous manifests;
-  - all three runnable fixtures are solved and verified;
+- Current-year blind forward evaluation meets these gates:
+  - the exact intended AttackCard appears in the top three for all five pinned 2026 fixtures: `subset-sum-query-schedule`, `lfstream`, `slide-periodic-round`, `goldwasser-micali-replication`, and `rotor-cipher`;
+  - the exact intended AttackCard ranks first for at least four of those five fixtures, while blocked cards may remain top-three when hard preconditions are not met;
+  - `lfstream` and `Rotor Cipher` are solved and verified end to end with independently replayable proof artifacts;
+  - `MAT347`, `tokencrypt`, and `kproof` produce honest blocked reports that identify the missing source, transcript, oracle, or specialist-tool precondition without claiming hidden solves;
   - zero candidates are labeled solved on flag shape alone;
   - reruns produce the same top-three order for unchanged inputs and catalog.
-- Current-year evaluation requires the exact intended AttackCard in the top three for
-  all five pinned 2026 cases: `subset-sum-query-schedule`, `lfstream`,
-  `slide-periodic-round`, `goldwasser-micali-replication`, and `rotor-cipher`.
-  The `lfstream` and `Rotor Cipher` cases must also complete end-to-end proof.
 - Offline mode performs no paper lookup, remote request, install attempt, or persistent-service startup.
 - Online paper research occurs only when `constraints.network` is `allowed` and records the permission state and sources in the case.
 - Missing specialist tools produce a blocked result without attempting to install software.
@@ -815,7 +813,7 @@ Implementation should be split into reviewable stages:
    - schema, validator, deterministic ranker, fixtures, initial catalog.
 
 3. **Solver templates**
-   - six templates, exact validation, tool/version checks.
+   - eight templates, exact validation, tool/version checks.
 
 4. **Literature workflow**
    - citation metadata, source hierarchy, paper-to-challenge variable mapping.

@@ -6,12 +6,12 @@
 """Rank a validated fingerprint against a validated local AttackCard catalog."""
 
 import json
-import math
 import sys
 from pathlib import Path
 from typing import Dict, Sequence
 
 from zest_crypto_conditions import canonical_digest, rank_cards_with_digests
+from zest_crypto_input import InputBoundaryError, loads_bounded_json, read_bounded_text
 from zest_crypto_parse import parse_catalog, parse_fingerprint, validate_catalog
 from zest_crypto_types import CatalogIssue, JsonValue, ParseError
 
@@ -25,27 +25,8 @@ def _failure(issue: CatalogIssue) -> int:
     return 2
 
 
-def _reject_non_standard_json_constant(value: str) -> None:
-    raise json.JSONDecodeError("non-standard JSON constant: {0}".format(value), value, 0)
-
-
-def _parse_finite_json_float(value: str) -> float:
-    number = float(value)
-    if not math.isfinite(number):
-        raise json.JSONDecodeError("non-finite JSON number: {0}".format(value), value, 0)
-    return number
-
-
-def _parse_json_integer(value: str) -> int:
-    try:
-        return int(value)
-    except ValueError as error:
-        raise json.JSONDecodeError("invalid JSON integer", value, 0) from error
-
-
 def _read_json(path: Path) -> JsonValue:
-    contents = path.read_text(encoding="utf-8")
-    return json.loads(contents, parse_constant=_reject_non_standard_json_constant, parse_float=_parse_finite_json_float, parse_int=_parse_json_integer)
+    return loads_bounded_json(read_bounded_text(str(path), "$"))
 
 
 def main(arguments: Sequence[str]) -> int:
@@ -56,10 +37,8 @@ def main(arguments: Sequence[str]) -> int:
     try:
         raw_fingerprint = _read_json(fingerprint_path)
         raw_catalog = _read_json(catalog_path)
-    except OSError as error:
-        return _failure(CatalogIssue("$", "input-unreadable", str(error)))
-    except UnicodeError as error:
-        return _failure(CatalogIssue("$", "input-undecodable", str(error)))
+    except InputBoundaryError as error:
+        return _failure(CatalogIssue(error.path, error.code))
     except RecursionError as error:
         return _failure(CatalogIssue("$", "input-too-deep", str(error)))
     except json.JSONDecodeError as error:
