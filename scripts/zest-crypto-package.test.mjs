@@ -25,6 +25,53 @@ function normalizeReferenceLabel(label) {
   return label.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function maskCode(contents) {
+  const characters = contents.split('');
+  let fence;
+  let lineStart = 0;
+
+  while (lineStart < contents.length) {
+    const nextLine = contents.indexOf('\n', lineStart);
+    const lineEnd = nextLine === -1 ? contents.length : nextLine;
+    const line = contents.slice(lineStart, lineEnd);
+    const openingFence = /^(?: {0,3})(`{3,}|~{3,})/.exec(line);
+
+    if (fence) {
+      characters.fill(' ', lineStart, lineEnd);
+      if (new RegExp(`^ {0,3}${fence.marker}{${fence.length},}[ \\t]*$`).test(line)) fence = undefined;
+    } else if (openingFence) {
+      characters.fill(' ', lineStart, lineEnd);
+      fence = { length: openingFence[1].length, marker: openingFence[1][0] };
+    } else if (/^(?: {4}|\t)/.test(line)) {
+      characters.fill(' ', lineStart, lineEnd);
+    }
+
+    lineStart = lineEnd + 1;
+  }
+
+  for (let start = 0; start < characters.length; start += 1) {
+    if (characters[start] !== '`') continue;
+    let openingEnd = start;
+    while (characters[openingEnd] === '`') openingEnd += 1;
+    const length = openingEnd - start;
+
+    for (let end = openingEnd; end < characters.length; end += 1) {
+      if (characters[end] !== '`') continue;
+      let closingEnd = end;
+      while (characters[closingEnd] === '`') closingEnd += 1;
+      if (closingEnd - end !== length) {
+        end = closingEnd - 1;
+        continue;
+      }
+      characters.fill(' ', start, closingEnd);
+      start = closingEnd - 1;
+      break;
+    }
+  }
+
+  return characters.join('');
+}
+
 function referenceDefinitions(contents) {
   return new Map(
     Array.from(contents.matchAll(/^ {0,3}\[([^\]\n]+)\]:[ \t]*(?:<([^>\n]+)>|(\S+))/gm), (match) => [
@@ -45,8 +92,9 @@ function referenceTargets(contents, definitions) {
 }
 
 function relativeMarkdownTargets(contents) {
-  const inline = Array.from(contents.matchAll(/\[[^\]]*\]\(([^)]+)\)/g), (match) => match[1].trim());
-  const referenced = referenceTargets(contents, referenceDefinitions(contents));
+  const markdown = maskCode(contents);
+  const inline = Array.from(markdown.matchAll(/\[[^\]]*\]\(([^)]+)\)/g), (match) => match[1].trim());
+  const referenced = referenceTargets(markdown, referenceDefinitions(markdown));
   return [...inline, ...referenced]
     .map((target) => target.replace(/^<(.+)>$/, '$1').split(/[?#]/, 1)[0])
     .filter((target) => target.length > 0 && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(target));
@@ -111,6 +159,41 @@ test('zest-crypto rejects an escaping reference-style Markdown link', async () =
 
     // Then: the escaped target is rejected rather than silently ignored.
     await assert.rejects(check, /escapes the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto ignores code literals while resolving shortcut references', async () => {
+  // Given: code literals plus a real shortcut reference in a package document.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(
+    join(skillDirectory, 'fixture.md'),
+    [
+      '```js',
+      'const values = [1, 2];',
+      '```',
+      '',
+      'Inline `const label = [literal];`.',
+      '',
+      '    const indices = [3, 4];',
+      '',
+      '[Genuine shortcut]',
+      '',
+      '[genuine shortcut]: fixture.md',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  try {
+    // When: the package-boundary checker resolves Markdown links.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: it ignores code data and accepts the defined shortcut reference.
+    await assert.doesNotReject(check);
   } finally {
     await rm(fixtureRoot, { force: true, recursive: true });
   }
