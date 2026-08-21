@@ -331,6 +331,70 @@ async function parseFingerprintDocument(document) {
   }
 }
 
+test('Python module facade contracts remain import-compatible', async () => {
+  // Given: the public module names used by the CLIs, tests, and copied standalone skill.
+  const parseNames = [
+    'SCHEMA_VERSION',
+    'READ_ONLY_SCHEMA_VERSIONS',
+    'SUPPORTED_SCHEMA_VERSIONS',
+    'CANONICAL_PROVENANCE_SCHEMA_VERSIONS',
+    'V1_FACT_VALUE_TYPES',
+    'V2_FACT_VALUE_TYPES',
+    'FACT_VALUE_TYPES',
+    'FACT_VALUE_TYPES_BY_SCHEMA',
+    'VALUE_TYPES',
+    'CARD_ID_RE',
+    'SHA256_RE',
+    'GIT_SHA_RE',
+    'NUMERIC_VALUE_TYPES',
+    'CONTAINS_VALUE_TYPES',
+    'LENGTH_VALUE_TYPES',
+    'parse_fingerprint',
+    'parse_catalog',
+    'validate_catalog',
+  ];
+  const conditionNames = [
+    'CardEvaluation',
+    'RankReport',
+    'evaluate_condition',
+    'classify_card',
+    'rank_cards',
+    'rank_cards_with_digests',
+    'canonical_digest',
+    '_catalog_document',
+    '_fingerprint_document',
+  ];
+  const script = [
+    'import json, os, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'import fingerprint',
+    'import zest_crypto_conditions as conditions',
+    'import zest_crypto_parse as parse',
+    `parse_names = ${JSON.stringify(parseNames)}`,
+    `condition_names = ${JSON.stringify(conditionNames)}`,
+    "error = fingerprint.InputError('$.input', 'invalid-input')",
+    'print(json.dumps({',
+    "  'condition_names': [name for name in condition_names if hasattr(conditions, name)],",
+    "  'error': {'code': error.code, 'path': error.path},",
+    "  'fingerprint_os_is_os': fingerprint.os is os,",
+    "  'parse_names': [name for name in parse_names if hasattr(parse, name)],",
+    '}, sort_keys=True))',
+  ].join('\n');
+
+  // When: Python 3.8 imports the three stable façades from the standalone script directory.
+  const result = await runPython(script);
+
+  // Then: every consumed symbol and monkeypatch seam remains present under its legacy module.
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  assert.deepEqual(JSON.parse(result.stdout), {
+    condition_names: conditionNames,
+    error: { code: 'invalid-input', path: '$.input' },
+    fingerprint_os_is_os: true,
+    parse_names: parseNames,
+  });
+});
+
 test('catalog contains the exact supported attack families', async () => {
   // Given: the standalone decision catalog promised by the public skill contract.
   const cards = JSON.parse(await readFile(catalog, 'utf8'));
