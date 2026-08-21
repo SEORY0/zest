@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -52,9 +52,9 @@ function runPython(script, args = []) {
   });
 }
 
-function runRanker(fingerprintPath, catalogPath) {
+function runRanker(fingerprintPath, catalogPath, environment = process.env) {
   return new Promise((resolve, reject) => {
-    execFile('python3', [ranker, fingerprintPath, catalogPath], { cwd: root }, (error, stdout, stderr) => {
+    execFile('python3', [ranker, fingerprintPath, catalogPath], { cwd: root, env: environment }, (error, stdout, stderr) => {
       if (error && typeof error.code !== 'number') {
         reject(error);
         return;
@@ -95,6 +95,27 @@ async function withTemporaryRankingInputs(prefix, fingerprint, catalogDocument, 
     return await operation(fingerprintPath, catalogPath);
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+}
+
+async function withExecutableSentinels(operation) {
+  const sentinelDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-sentinels-'));
+  const markerPath = join(sentinelDirectory, 'invoked');
+  const script = '#!/bin/sh\nprintf invoked > "$ZEST_CRYPTO_SENTINEL_MARKER"\nexit 97\n';
+  const commandNames = ['sage', 'pip', 'pip3', 'pip3.8', 'uv', 'poetry', 'conda', 'apt', 'apt-get', 'brew', 'npm', 'yarn'];
+  await Promise.all(commandNames.map(async (command) => {
+    const commandPath = join(sentinelDirectory, command);
+    await writeFile(commandPath, script, 'utf8');
+    await chmod(commandPath, 0o755);
+  }));
+  try {
+    return await operation({
+      ...process.env,
+      PATH: `${sentinelDirectory}${delimiter}${process.env.PATH ?? ''}`,
+      ZEST_CRYPTO_SENTINEL_MARKER: markerPath,
+    }, markerPath);
+  } finally {
+    await rm(sentinelDirectory, { force: true, recursive: true });
   }
 }
 
@@ -832,20 +853,102 @@ test('ranker blocks missing required commands without running installers', async
     packages: ['never-run-installer'],
     reason: 'SageMath is required for this card.',
   }];
-  const installerMarker = join(tmpdir(), `zest-crypto-installer-${process.pid}`);
-
   await withTemporaryRankingInputs('zest-crypto-rank-tool-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
-    // When: a real CLI consumer requests a ranked report.
+    await withExecutableSentinels(async (environment, markerPath) => {
+      // When: a real CLI consumer receives executable Sage and installer sentinels first in PATH.
+      const result = await runRanker(fingerprintPath, catalogPath, environment);
+
+      // Then: it reports the missing tool without invoking Sage, pip, or a package manager.
+      assert.equal(result.code, 0, result.stderr);
+      assert.equal(existsSync(markerPath), false);
+      assert.deepEqual(JSON.parse(result.stdout).blocked, [{
+        card_id: 'lattice.sage.example',
+        rule_id: 'tool:sage',
+        reason: 'SageMath is required for this card.',
+        evidence_fact_ids: [],
+      }]);
+    });
+  });
+});
+
+test('direct fingerprint parsing rejects duplicate fact-key status and value permutations', async () => {
+  // Given: observed/inferred and contradictory observed facts sharing one FactIndex key.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const exponent = fingerprint.facts.find(({ key }) => key === 'rsa.public_exponent');
+  assert.notEqual(exponent, undefined);
+  const inferred = { ...cloneDocument(exponent), id: 'fact-exponent-inferred', status: 'inferred', evidence: { rationale: 'Tentative source reading.' } };
+  const derived = { ...cloneDocument(exponent), id: 'fact-exponent-derived', status: 'derived', evidence: { source_fact_ids: ['fact-moduli'], rationale: 'Derived from the public modulus record.' } };
+  const five = { ...cloneDocument(exponent), id: 'fact-exponent-five', value: 5 };
+  const withoutExponent = fingerprint.facts.filter(({ key }) => key !== 'rsa.public_exponent');
+  const permutations = [
+    [cloneDocument(exponent), inferred],
+    [inferred, cloneDocument(exponent)],
+    [cloneDocument(exponent), derived],
+    [derived, inferred],
+    [cloneDocument(exponent), five],
+    [five, cloneDocument(exponent)],
+  ].map((facts) => ({ ...cloneDocument(fingerprint), facts: [...withoutExponent, ...facts] }));
+
+  for (const document of permutations) {
+    // When: domain callers parse an otherwise valid fingerprint.
+    const result = await parseFingerprintDocument(document);
+
+    // Then: no fact ordering can silently choose a truth source for one key.
+    assert.deepEqual(result, { ok: false, code: 'duplicate-fact-key', path: '$.facts[5].key' });
+  }
+});
+
+test('ranker CLI rejects duplicate fact-key status and value permutations', async () => {
+  // Given: the same order-sensitive duplicate-key fingerprints at the public CLI boundary.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const exponent = fingerprint.facts.find(({ key }) => key === 'rsa.public_exponent');
+  assert.notEqual(exponent, undefined);
+  const inferred = { ...cloneDocument(exponent), id: 'fact-exponent-inferred', status: 'inferred', evidence: { rationale: 'Tentative source reading.' } };
+  const derived = { ...cloneDocument(exponent), id: 'fact-exponent-derived', status: 'derived', evidence: { source_fact_ids: ['fact-moduli'], rationale: 'Derived from the public modulus record.' } };
+  const five = { ...cloneDocument(exponent), id: 'fact-exponent-five', value: 5 };
+  const withoutExponent = fingerprint.facts.filter(({ key }) => key !== 'rsa.public_exponent');
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  const permutations = [
+    [cloneDocument(exponent), inferred],
+    [inferred, cloneDocument(exponent)],
+    [cloneDocument(exponent), derived],
+    [derived, inferred],
+    [cloneDocument(exponent), five],
+    [five, cloneDocument(exponent)],
+  ].map((facts) => ({ ...cloneDocument(fingerprint), facts: [...withoutExponent, ...facts] }));
+
+  for (const document of permutations) {
+    await withTemporaryRankingInputs('zest-crypto-duplicate-key-', document, [card], async (fingerprintPath, catalogPath) => {
+      // When: the ranker decodes the fingerprint once at its CLI boundary.
+      const result = await runRanker(fingerprintPath, catalogPath);
+
+      // Then: it rejects every order before any state or score can be selected.
+      assert.equal(result.code, 2, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        ok: false,
+        issues: [{ path: '$.facts[5].key', code: 'duplicate-fact-key' }],
+      });
+    });
+  }
+});
+
+test('ranker CLI hashes exact decoded raw inputs with omitted constraint defaults', async () => {
+  // Given: a valid fingerprint that leaves all optional constraint fields omitted.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  fingerprint.constraints = {};
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  const catalogDocument = [card];
+
+  await withTemporaryRankingInputs('zest-crypto-raw-digest-', fingerprint, catalogDocument, async (fingerprintPath, catalogPath) => {
+    // When: the CLI parses valid default-free input documents.
     const result = await runRanker(fingerprintPath, catalogPath);
 
-    // Then: it reports the missing tool and does not execute package installation.
+    // Then: both digests describe exactly the decoded raw JSON documents, not reconstructed defaults.
     assert.equal(result.code, 0, result.stderr);
-    assert.equal(existsSync(installerMarker), false);
-    assert.deepEqual(JSON.parse(result.stdout).blocked, [{
-      card_id: 'lattice.sage.example',
-      rule_id: 'tool:sage',
-      reason: 'SageMath is required for this card.',
-      evidence_fact_ids: [],
-    }]);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.fingerprint_sha256, canonicalDigest(fingerprint));
+    assert.equal(report.catalog_sha256, canonicalDigest(catalogDocument));
   });
 });

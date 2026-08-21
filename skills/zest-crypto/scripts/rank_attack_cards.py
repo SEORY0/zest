@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Sequence
 
-from zest_crypto_conditions import rank_cards
+from zest_crypto_conditions import canonical_digest, rank_cards_with_digests
 from zest_crypto_parse import parse_catalog, parse_fingerprint, validate_catalog
 from zest_crypto_types import CatalogIssue, JsonValue, ParseError
 
@@ -74,7 +74,7 @@ def main(arguments: Sequence[str]) -> int:
         return _failure(CatalogIssue(error.path, error.code, error.detail))
     if issues:
         return _failure(issues[0])
-    _write(rank_cards(fingerprint, cards).to_document())
+    _write(rank_cards_with_digests(fingerprint, cards, canonical_digest(raw_fingerprint), canonical_digest(raw_catalog)).to_document())
     return 0
 
 

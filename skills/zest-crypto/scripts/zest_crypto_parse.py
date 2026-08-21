@@ -282,6 +282,7 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
             )
         )
     _check_unique([str(item.id) for item in facts], "$.facts", "duplicate-fact-id")
+    _check_unique_fact_keys(facts)
     input_ids = frozenset(item.id for item in inputs)
     for index, fact in enumerate(facts):
         if fact.status is FactStatus.OBSERVED and fact.evidence.input_id not in input_ids:
@@ -327,6 +328,14 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
         max_oracle_queries=_optional_nonnegative_integer(constraints_value, "max_oracle_queries", "$.constraints"),
     )
     return Fingerprint(schema_version, _string(value["case_id"], "$.case_id"), inputs, tuple(facts), tuple(capabilities), constraints)
+
+
+def _check_unique_fact_keys(facts: Sequence[Fact]) -> None:
+    seen: Set[FactKey] = set()
+    for index, fact in enumerate(facts):
+        if fact.key in seen:
+            _fail("$.facts[{0}].key".format(index), "duplicate-fact-key", "fact keys must be unique for the FactIndex")
+        seen.add(fact.key)
 
 
 def _optional_nonnegative_integer(value: Dict[str, Any], key: str, path: str) -> Any:

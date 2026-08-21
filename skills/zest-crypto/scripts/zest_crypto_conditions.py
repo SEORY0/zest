@@ -33,16 +33,11 @@ from zest_crypto_types import (
 
 Predicate = Callable[[FactValue, Optional[FactValue]], bool]
 Gate = Union[Rule, NegativeMatch]
-COST_PENALTIES: Dict[CostClass, int] = {
-    CostClass.LOW: 0, CostClass.MEDIUM: 10,
-    CostClass.HIGH: 25, CostClass.ORACLE_BOUND: 15,
-}
+COST_PENALTIES: Dict[CostClass, int] = {CostClass.LOW: 0, CostClass.MEDIUM: 10, CostClass.HIGH: 25, CostClass.ORACLE_BOUND: 15}
 
 
 @dataclass(frozen=True)
 class CardEvaluation:
-    """One card's state before its result is placed in a report array."""
-
     card_id: CardId
     state: CardState
     score: Optional[int]
@@ -231,13 +226,21 @@ def _unique_fact_ids(groups: Iterable[Tuple[str, ...]]) -> Tuple[str, ...]:
 
 
 def rank_cards(fingerprint: Fingerprint, cards: Tuple[AttackCard, ...]) -> RankReport:
+    return _rank_cards(fingerprint, cards, canonical_digest(_fingerprint_document(fingerprint)), canonical_digest(_catalog_document(cards)))
+
+
+def rank_cards_with_digests(fingerprint: Fingerprint, cards: Tuple[AttackCard, ...], fingerprint_sha256: str, catalog_sha256: str) -> RankReport:
+    return _rank_cards(fingerprint, cards, fingerprint_sha256, catalog_sha256)
+
+
+def _rank_cards(fingerprint: Fingerprint, cards: Tuple[AttackCard, ...], fingerprint_sha256: str, catalog_sha256: str) -> RankReport:
     facts = {fact.key: fact for fact in fingerprint.facts}
     capabilities = {capability.command: capability for capability in fingerprint.capabilities}
     evaluations = tuple(_rank_card(card, facts, capabilities) for card in cards)
     eligible = tuple(sorted((item for item in evaluations if item.state is CardState.ELIGIBLE), key=lambda item: (-_required_score(item), str(item.card_id))))
     blocked = tuple(sorted((item for item in evaluations if item.state is CardState.BLOCKED), key=lambda item: str(item.card_id)))
     rejected = tuple(sorted((item for item in evaluations if item.state is CardState.REJECTED), key=lambda item: str(item.card_id)))
-    return RankReport(1, _canonical_digest(_fingerprint_document(fingerprint)), _canonical_digest(_catalog_document(cards)), eligible, blocked, rejected)
+    return RankReport(1, fingerprint_sha256, catalog_sha256, eligible, blocked, rejected)
 
 
 def _rank_card(card: AttackCard, facts: FactIndex, capabilities: Dict[str, Capability]) -> CardEvaluation:
@@ -271,7 +274,7 @@ def _non_eligible_document(item: CardEvaluation) -> Dict[str, JsonValue]:
     return {"card_id": str(item.card_id), "rule_id": item.rule_id, "reason": item.reason, "evidence_fact_ids": list(item.evidence_fact_ids)}
 
 
-def _canonical_digest(document: JsonValue) -> str:
+def canonical_digest(document: JsonValue) -> str:
     encoded = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return sha256(encoded).hexdigest()
 
