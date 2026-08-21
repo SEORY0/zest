@@ -3,7 +3,7 @@
 # requires-python = ">=3.8"
 # dependencies = []
 # ///
-"""Recover a reused ECDSA nonce and verify signatures plus the public key."""
+"""Recover a reused ECDSA nonce on proven small or audited secp256k1/P-256 domains."""
 
 from __future__ import annotations
 
@@ -19,7 +19,8 @@ MAX_INPUT_BYTES = 1_000_000
 MAX_INTEGER_BITS = 1024
 MAX_JSON_DEPTH = 32
 MAX_JSON_INTEGER_DIGITS = 4096
-KNOWN_LARGE_PRIMES = frozenset((0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141))
+# Canonical (p, a, b, gx, gy, order) tuples; other large domains are unsupported.
+KNOWN_STANDARD_DOMAINS = frozenset(((0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F, 0, 7, 55066263022277343669578718895168534326250603453777594175500187360389116729240, 32670510020758816978083085130507043184471273380659243275938904335757337482424, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141), (115792089210356248762697446949407573530086143415290314195533631308867097853951, 115792089210356248762697446949407573530086143415290314195533631308867097853948, 41058363725152142129326129780047268409114441015993725554835256314039467401291, 48439561293906451759052585252797914202762949526041747995844080717082404635286, 36134250956749795798585127919587881956611106672985015071877198253568414405109, 115792089210356248762697446949407573529996955224135760342422259061068512044369)))
 
 
 class SolverError(Exception):
@@ -159,11 +160,7 @@ def _is_prime_64(value):
     return True
 
 
-def _require_prime(value, code):
-    if value in KNOWN_LARGE_PRIMES:
-        return
-    if value.bit_length() > 64:
-        raise SolverError("unsupported-domain")
+def _require_prime_64(value, code):
     if not _is_prime_64(value):
         raise SolverError(code)
 
@@ -244,8 +241,12 @@ def _solve(document):
     curve = (p, _integer(curve_document, "a") % p, _integer(curve_document, "b") % p)
     generator = (_integer(curve_document, "gx"), _integer(curve_document, "gy"))
     order = _integer(document, "order", 3)
-    _require_prime(p, "invalid-field")
-    _require_prime(order, "invalid-order")
+    if p.bit_length() > 64 or order.bit_length() > 64:
+        if (*curve, *generator, order) not in KNOWN_STANDARD_DOMAINS:
+            raise SolverError("unsupported-domain")
+    else:
+        _require_prime_64(p, "invalid-field")
+        _require_prime_64(order, "invalid-order")
     if (4 * pow(curve[1], 3, p) + 27 * pow(curve[2], 2, p)) % p == 0:
         raise SolverError("invalid-curve")
     public_document = document.get("public_key")

@@ -11,7 +11,10 @@ export const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const templates = join(root, 'skills', 'zest-crypto', 'assets', 'solver-templates');
 export const fixtures = join(root, 'scripts', 'fixtures', 'zest-crypto', 'solvers');
 export const python = process.env.PYTHON ?? 'python3';
-export const sageAvailable = spawnSync('sage', ['--version'], { stdio: 'ignore' }).status === 0;
+const sageProbeTimeoutMs = 500;
+export const sageAvailable = spawnSync('sage', ['--version'], {
+  stdio: 'ignore', timeout: sageProbeTimeoutMs, killSignal: 'SIGKILL',
+}).status === 0;
 
 export async function run(command, args) {
   try {

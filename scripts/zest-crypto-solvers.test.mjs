@@ -6,6 +6,7 @@ import test from 'node:test';
 import {
   assertFailure, fixtures, parseSuccess, python, registerReaderTests, run, sageAvailable, templates,
 } from './zest-crypto-solvers.test-support.mjs';
+import './zest-crypto-solvers-round2.test-support.mjs';
 
 const jsonSuccessCases = [
   {

@@ -3,7 +3,7 @@
 # requires-python = ">=3.8"
 # dependencies = []
 # ///
-"""Recover a Wiener-vulnerable RSA key and prove factorization and round trip."""
+"""Recover a Wiener-vulnerable RSA key with factors below the published prime-proof bound."""
 
 from __future__ import annotations
 
@@ -19,7 +19,9 @@ MAX_INPUT_BYTES = 1_000_000
 MAX_INTEGER_BITS = 16_384
 MAX_JSON_DEPTH = 32
 MAX_JSON_INTEGER_DIGITS = 4096
-PRIME_PROOF_BITS = 64
+# Exclusive deterministic Miller-Rabin range for prime bases through 37.
+PRIME_PROOF_LIMIT = 318_665_857_834_031_151_167_461
+PRIME_PROOF_BASES = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37)
 
 
 class SolverError(Exception):
@@ -133,7 +135,7 @@ def _integer(document, key, minimum):
 
 
 def _is_prime(value):
-    if value < 2 or value.bit_length() > PRIME_PROOF_BITS:
+    if value < 2 or value >= PRIME_PROOF_LIMIT:
         return False
     for divisor in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
         if value % divisor == 0:
@@ -143,7 +145,7 @@ def _is_prime(value):
     while odd_part % 2 == 0:
         odd_part //= 2
         twos += 1
-    for base in (2, 325, 9375, 28178, 450775, 9780504, 1795265022):
+    for base in PRIME_PROOF_BASES:
         reduced_base = base % value
         if reduced_base == 0:
             continue
@@ -157,6 +159,13 @@ def _is_prime(value):
         else:
             return False
     return True
+
+
+def _require_prime_factor(value):
+    if value >= PRIME_PROOF_LIMIT:
+        raise SolverError("unsupported-domain")
+    if not _is_prime(value):
+        raise SolverError("invalid-factorization")
 
 
 def _recover(n, e, limit):
@@ -186,8 +195,10 @@ def _recover(n, e, limit):
         p = (factor_sum + root) // 2
         q = (factor_sum - root) // 2
         if p > 1 and q > 1 and p * q == n:
-            if p == q or not _is_prime(p) or not _is_prime(q):
+            if p == q:
                 raise SolverError("invalid-factorization")
+            _require_prime_factor(p)
+            _require_prime_factor(q)
             if (e * d) % ((p - 1) * (q - 1)) == 1:
                 return d, tuple(sorted((p, q)))
     raise SolverError("no-solution")
