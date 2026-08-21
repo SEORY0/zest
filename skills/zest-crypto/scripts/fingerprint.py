@@ -21,7 +21,7 @@ from zest_crypto_parse import FACT_VALUE_TYPES
 
 CAPABILITY_COMMANDS = ("python3", "sage", "z3")
 DOI_URL = re.compile(r"https://(?:dx\.)?doi\.org/(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.IGNORECASE)
-EPRINT_URL = re.compile(r"https://eprint\.iacr\.org/(\d{4}/\d+)(?:\.pdf)?(?=$|[\s\"'<>()\[\]{},;!?])", re.IGNORECASE)
+EPRINT_URL = re.compile(r"https://eprint\.iacr\.org/(\d{4}/\d+)(?:\.pdf)?(?=$|[\s\"'<>()\[\]{},;!])", re.IGNORECASE)
 HEX_INTEGER = re.compile(r"^\s*(n|modulus|e|public_exponent|c|ciphertext)\s*=\s*(0x[0-9a-fA-F]+)\s*$", re.MULTILINE)
 CLUE_TOKEN = re.compile(r"(?<![A-Za-z0-9_])(small_roots|LLL|EllipticCurve|MT19937|LFSR|Goldwasser|FROST|UOV|CSIDH|repeated-round|slide)(?![A-Za-z0-9_])")
 CLUE_FAMILIES = {
@@ -103,7 +103,7 @@ def _integer_list(value):
 
 
 def _string_list(value):
-    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) and item for item in value):
+    if not isinstance(value, (list, tuple)) or not value or not all(isinstance(item, str) and item for item in value):
         return None
     return list(value)
 
@@ -112,13 +112,13 @@ def _immutable_anchor(value):
     """Accept ``repo@40-hex-SHA/path:Lx-Ly`` immutable source anchors only."""
 
     repository, marker, revision_path = value.rpartition("@")
-    if not marker or not repository or "@" in repository or any(character.isspace() for character in repository):
+    if not marker or not repository or "@" in repository or any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in repository):
         return False
     revision, separator, location = revision_path.partition("/")
     if not separator or len(revision) != 40 or any(character not in "0123456789abcdef" for character in revision):
         return False
     source_path, line_marker, line_range = location.rpartition(":")
-    if not line_marker or not source_path or source_path.startswith("/") or "\\" in source_path:
+    if not line_marker or not source_path or source_path.startswith("/") or "\\" in source_path or any(ord(character) < 32 or ord(character) == 127 for character in source_path):
         return False
     components = source_path.split("/")
     if any(component in ("", ".", "..") for component in components):
@@ -218,8 +218,13 @@ def _extract_transcript(text, input_index, observations):
         _add(observations, "rsa.moduli", [value for value, _line_number in moduli], input_index, tuple(line for _value, line in moduli))
     if ciphertexts:
         _add(observations, "rsa.ciphertexts", [value for value, _line_number in ciphertexts], input_index, tuple(line for _value, line in ciphertexts))
-    for value, line in exponents:
-        _add(observations, "rsa.public_exponent", value, input_index, (line,))
+    if exponents:
+        exponent_values = [value for value, _line_number in exponents]
+        exponent_lines = tuple(line for _value, line in exponents)
+        if all(value == exponent_values[0] for value in exponent_values):
+            _add(observations, "rsa.public_exponent", exponent_values[0], input_index, exponent_lines)
+        else:
+            _add(observations, "rsa.public_exponents", exponent_values, input_index, exponent_lines)
 
 
 def _extract_clues(text, input_index, observations):
@@ -243,6 +248,8 @@ def _selected(observations, key):
     if not candidates:
         return None
     first = candidates[0]
+    if key == "construction.parameter_signature" and all(candidate[1] == first[1] for candidate in candidates):
+        return sorted(set(value for candidate, _input_index, _lines in candidates for value in candidate)), first[1], tuple(line for _value, _input_index, lines in candidates for line in lines)
     if not all(candidate[0] == first[0] and candidate[1] == first[1] for candidate in candidates):
         return None
     return first[0], first[1], tuple(line for _value, _input_index, lines in candidates for line in lines)
@@ -264,6 +271,7 @@ def _observed(facts, inputs, key, candidate):
 def _build_facts(inputs, observations):
     facts = []
     _observed(facts, inputs, "rsa.public_exponent", _selected(observations, "rsa.public_exponent"))
+    _observed(facts, inputs, "rsa.public_exponents", _selected(observations, "rsa.public_exponents"))
     _observed(facts, inputs, "rsa.modulus", _selected(observations, "rsa.modulus"))
     moduli = _observed(facts, inputs, "rsa.moduli", _selected(observations, "rsa.moduli"))
     ciphertexts = _observed(facts, inputs, "rsa.ciphertexts", _selected(observations, "rsa.ciphertexts"))
@@ -294,22 +302,22 @@ def _build_facts(inputs, observations):
 
 
 def _read_regular_file(raw_path, issue_path):
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
     nofollow = getattr(os, "O_NOFOLLOW", None)
-    original = None
     descriptor = None
     try:
-        if nofollow is None:
-            original = os.lstat(raw_path)
-            if stat.S_ISLNK(original.st_mode):
-                raise InputError(issue_path, "input-symlink")
-        else:
+        original = os.lstat(raw_path)
+        if stat.S_ISLNK(original.st_mode):
+            raise InputError(issue_path, "input-symlink")
+        if not stat.S_ISREG(original.st_mode):
+            raise InputError(issue_path, "input-not-file")
+        if nofollow is not None:
             flags |= nofollow
         descriptor = os.open(raw_path, flags)
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
             raise InputError(issue_path, "input-not-file")
-        if original is not None and (original.st_dev != opened.st_dev or original.st_ino != opened.st_ino):
+        if original.st_dev != opened.st_dev or original.st_ino != opened.st_ino:
             raise InputError(issue_path, "input-unreadable")
         handle = os.fdopen(descriptor, "rb", closefd=True)
         descriptor = None

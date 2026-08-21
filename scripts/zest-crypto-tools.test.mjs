@@ -78,6 +78,18 @@ function runFingerprint(caseId, inputPaths, environment = process.env, interpret
   });
 }
 
+function runFingerprintBounded(caseId, inputPaths, timeout) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [fingerprint, caseId, ...inputPaths], { cwd: root, timeout }, (error, stdout, stderr) => {
+      if (error && typeof error.code !== 'number' && !error.killed) {
+        reject(error);
+        return;
+      }
+      resolve({ code: error && typeof error.code === 'number' ? error.code : null, stderr, stdout, timedOut: error ? error.killed : false });
+    });
+  });
+}
+
 function fact(document, key) {
   const result = document.facts.find((item) => item.key === key);
   assert.notEqual(result, undefined, `missing fingerprint fact: ${key}`);
@@ -1275,8 +1287,8 @@ test('fingerprint aggregates distinct labeled transcript samples in source order
   }
 });
 
-test('fingerprint never parses replacement bytes after a checked input path is swapped', async () => {
-  // Given: a deterministic swap at the legacy pathname validation seam.
+test('fingerprint retains descriptor bytes when os.open is followed by a pathname swap', async () => {
+  // Given: a regular input and a replacement target.
   const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-path-race-'));
   const victim = join(fixtureDirectory, 'victim.py');
   const target = join(fixtureDirectory, 'target.py');
@@ -1287,38 +1299,76 @@ test('fingerprint never parses replacement bytes after a checked input path is s
     'import json, os, sys',
     "sys.path.insert(0, 'skills/zest-crypto/scripts')",
     'import fingerprint',
-    'victim = fingerprint.Path(sys.argv[1])',
-    'target = fingerprint.Path(sys.argv[2])',
-    'original_resolve = fingerprint.Path.resolve',
+    'victim, target = sys.argv[1:3]',
+    'original_open = fingerprint.os.open',
     'swapped = [False]',
-    'def swap_after_resolve(path, strict=False):',
-    '  result = original_resolve(path, strict=strict)',
+    'def open_then_swap(path, flags):',
+    '  descriptor = original_open(path, flags)',
     '  if path == victim and not swapped[0]:',
     '    swapped[0] = True',
-    "    os.replace(str(victim), str(victim.with_name('original.py')))",
-    '    os.symlink(str(target), str(victim))',
-    '  return result',
-    'fingerprint.Path.resolve = swap_after_resolve',
+    "    os.replace(victim, victim + '.original')",
+    '    os.symlink(target, victim)',
+    '  return descriptor',
+    'fingerprint.os.open = open_then_swap',
     'try:',
-    "  document = fingerprint.fingerprint('path-race', [str(victim)])",
+    "  document = fingerprint.fingerprint('path-race', [victim])",
     "  print(json.dumps({'ok': True, 'sha256': document['inputs'][0]['sha256'], 'facts': document['facts']}, sort_keys=True))",
     'except fingerprint.InputError as error:',
     "  print(json.dumps({'ok': False, 'code': error.code}, sort_keys=True))",
   ].join('\n');
 
   try {
-    // When: the public library boundary is interrupted between legacy validation and read operations.
+    // When: the name changes immediately after the descriptor is opened.
     const result = await runPython(harness, [victim, target]);
 
-    // Then: it either retains the opened original descriptor or fails with structured input data, never target bytes.
+    // Then: hashing and parsing retain the opened original bytes rather than the new pathname target.
     assert.equal(result.code, 0, result.stderr);
     const outcome = JSON.parse(result.stdout);
-    if (outcome.ok) {
-      assert.equal(outcome.sha256, originalDigest);
-      assert.deepEqual(outcome.facts.map(({ key, value }) => ({ key, value })), [{ key: 'rsa.modulus', value: 101 }]);
-    } else {
-      assert.equal(['input-symlink', 'input-unreadable'].includes(outcome.code), true);
-    }
+    assert.equal(outcome.ok, true);
+    assert.equal(outcome.sha256, originalDigest);
+    assert.deepEqual(outcome.facts.map(({ key, value }) => ({ key, value })), [{ key: 'rsa.modulus', value: 101 }]);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint rejects an inode swap on the forced no-O_NOFOLLOW fallback', async () => {
+  // Given: a regular victim and an alternate regular file after the fallback lstat seam.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-fallback-race-'));
+  const victim = join(fixtureDirectory, 'victim.py');
+  const target = join(fixtureDirectory, 'target.py');
+  await writeFile(victim, 'n = 101\n', 'utf8');
+  await writeFile(target, 'n = 99991\n', 'utf8');
+  const harness = [
+    'import json, os, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'import fingerprint',
+    'victim, target = sys.argv[1:3]',
+    'fingerprint.os.O_NOFOLLOW = None',
+    'original_lstat = fingerprint.os.lstat',
+    'swapped = [False]',
+    'def lstat_then_swap(path):',
+    '  result = original_lstat(path)',
+    '  if path == victim and not swapped[0]:',
+    '    swapped[0] = True',
+    '    os.replace(target, victim)',
+    '  return result',
+    'fingerprint.os.lstat = lstat_then_swap',
+    'try:',
+    "  fingerprint.fingerprint('fallback-race', [victim])",
+    'except fingerprint.InputError as error:',
+    "  print(json.dumps({'ok': False, 'code': error.code}, sort_keys=True))",
+    'else:',
+    "  print(json.dumps({'ok': True}, sort_keys=True))",
+  ].join('\n');
+
+  try {
+    // When: the fallback opens after the checked inode is replaced.
+    const result = await runPython(harness, [victim, target]);
+
+    // Then: the mismatch is a stable structured failure instead of replacement parsing.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { ok: false, code: 'input-unreadable' });
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }
@@ -1335,6 +1385,9 @@ test('fingerprint emits only documented immutable source anchors', async () => {
     ['missing-lines.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py'], false],
     ['absolute-path.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac//challenge.py:L1-L20'], false],
     ['traversing-path.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/../challenge.py:L1-L20'], false],
+    ['empty.py', [], false],
+    ['nul-repository.py', ['repo\u0000@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20'], false],
+    ['control-path.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge\u001f.py:L1-L20'], false],
     ['mixed.py', [validAnchor, 'github.com/example/zest@not-a-sha/challenge.py:L1-L20'], false],
   ];
 
@@ -1364,7 +1417,11 @@ test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => 
   const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-eprint-'));
   const invalid = join(fixtureDirectory, 'invalid.py');
   const valid = join(fixtureDirectory, 'valid.py');
-  await writeFile(invalid, 'paper = "https://eprint.iacr.org/2020/852evil"\n', 'utf8');
+  await writeFile(invalid, [
+    'prefix = "https://eprint.iacr.org/2020/852evil"',
+    'query = "https://eprint.iacr.org/2020/852?download=1"',
+    'fragment = "https://eprint.iacr.org/2020/852#page=1"',
+  ].join('\n'), 'utf8');
   await writeFile(valid, [
     'bare = "https://eprint.iacr.org/2020/852"',
     'pdf = "https://eprint.iacr.org/2021/123.pdf"',
@@ -1405,6 +1462,77 @@ test('fingerprint requires explicit aligned samples for either same_plaintext va
     assert.equal(unalignedDocument.facts.some(({ key }) => key === 'rsa.same_plaintext'), false);
     assert.equal(fact(trueDocument, 'rsa.same_plaintext').value, true);
     assert.equal(fact(falseDocument, 'rsa.same_plaintext').value, false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint unions source-backed raw and AST clues while withholding ambiguous family inference', async () => {
+  // Given: one raw exact clue and one AST call-name clue in the same source.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-mixed-clues-'));
+  const source = join(fixtureDirectory, 'mixed.py');
+  await writeFile(source, '# UOV\nprotocol = FROST()\n', 'utf8');
+
+  try {
+    // When: both conservative clue channels inspect the source.
+    const result = await runFingerprint('mixed-clues', [source]);
+
+    // Then: every exact clue remains observed but competing family mappings prevent an inferred conclusion.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    const clues = fact(document, 'construction.parameter_signature');
+    assert.deepEqual(clues.value, ['FROST', 'UOV']);
+    assert.equal(clues.evidence.locator, 'lines 1, 2');
+    assert.equal(document.facts.some(({ key }) => key === 'construction.canonical_family'), false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint aggregates distinct transcript exponents and preserves a shared scalar exponent', async () => {
+  // Given: one transcript with distinct exponents and another with an explicitly repeated value.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-transcript-exponents-'));
+  const distinct = join(fixtureDirectory, 'distinct.txt');
+  const shared = join(fixtureDirectory, 'shared.txt');
+  await writeFile(distinct, 'e = 0x03\ne = 0x05\n', 'utf8');
+  await writeFile(shared, 'e = 0x03\ne = 0x03\n', 'utf8');
+
+  try {
+    // When: labeled hexadecimal exponent samples are extracted.
+    const distinctResult = await runFingerprint('distinct-exponents', [distinct]);
+    const sharedResult = await runFingerprint('shared-exponents', [shared]);
+
+    // Then: distinct observations form a list, while a shared value remains scalar with complete evidence lines.
+    assert.equal(distinctResult.code, 0, distinctResult.stderr);
+    const distinctDocument = JSON.parse(distinctResult.stdout);
+    assert.deepEqual(fact(distinctDocument, 'rsa.public_exponents').value, [3, 5]);
+    assert.equal(fact(distinctDocument, 'rsa.public_exponents').evidence.locator, 'lines 1, 2');
+    assert.equal(distinctDocument.facts.some(({ key }) => key === 'rsa.public_exponent'), false);
+    assert.equal(sharedResult.code, 0, sharedResult.stderr);
+    const sharedExponent = fact(JSON.parse(sharedResult.stdout), 'rsa.public_exponent');
+    assert.equal(sharedExponent.value, 3);
+    assert.equal(sharedExponent.evidence.locator, 'lines 1, 2');
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint rejects FIFO inputs before the bounded CLI timeout', async () => {
+  // Given: a FIFO path with no writer, which must never block artifact intake.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-fifo-'));
+  const fifo = join(fixtureDirectory, 'challenge.pipe');
+  const setup = await runPython('import os, sys\nos.mkfifo(sys.argv[1])', [fifo]);
+  assert.equal(setup.code, 0, setup.stderr);
+
+  try {
+    // When: the CLI receives the FIFO under a sub-second execution bound.
+    const result = await runFingerprintBounded('fifo-input', [fifo], 500);
+
+    // Then: it returns the normal structured non-file boundary instead of waiting for a writer.
+    assert.equal(result.timedOut, false);
+    assert.equal(result.code, 2);
+    assert.equal(result.stderr, '');
+    assert.equal(JSON.parse(result.stdout).issues[0].code, 'input-not-file');
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }
