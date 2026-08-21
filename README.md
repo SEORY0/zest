@@ -138,8 +138,9 @@ unsupported cases rather than claiming every construction is solvable. `skills/z
 procedure for unknown artefacts: identify by magic bytes, measure entropy, extract strings and
 indicators, defang for reporting.
 
-`references/operations.md` in each skill is generated from the registry by `npm run docs`, so the
-catalogue an agent reads always matches the code.
+`references/operations.md` in `zest`, `zest-ctf`, and `zest-triage` is generated from the registry
+by `npm run docs`, so the CyberChef-style operation catalogue those skills read always matches the
+code. `zest-crypto` instead ships its own reviewed attack-card catalogue and validators.
 
 ## What is in it
 
@@ -184,7 +185,7 @@ docs cannot drift from the behaviour.
 ```console
 $ npm test
 # core: 219 passed
-# skill package: 2 passed
+# scripts: 168 passed, 1 skipped (Sage unavailable)
 ```
 
 ## Design
