@@ -1050,7 +1050,7 @@ test('fingerprint records canonical paper IDs and one inferred family clue', asy
   assert.deepEqual(paperIds.value, ['doi:10.1007/3-540-39799-X_29', 'eprint:2020/852']);
   const anchors = fact(document, 'construction.source_anchors');
   assert.equal(anchors.status, 'observed');
-  assert.deepEqual(anchors.value, ['8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac:challenge.py:L1-L20']);
+  assert.deepEqual(anchors.value, ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20']);
   const family = fact(document, 'construction.canonical_family');
   assert.equal(family.status, 'inferred');
   assert.equal(family.value, 'paper.frost.threshold-signature');
@@ -1214,6 +1214,227 @@ test('fingerprint keeps structured invalid-input behavior on Python 3.8 when ava
 
     // Then: the stable structured error contract remains available.
     assert.equal(failureCode(result), 'input-undecodable');
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint locators cover the exact citation and clue matches', async () => {
+  // Given: a larger identifier before an exact call clue and citations on distinct lines.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-locators-'));
+  const source = join(fixtureDirectory, 'evidence.py');
+  await writeFile(source, [
+    'myFROSThelper = 1',
+    'protocol = FROST()',
+    'paper = "https://eprint.iacr.org/2020/852"',
+    'doi = "https://doi.org/10.1007/3-540-39799-X_29"',
+  ].join('\n'), 'utf8');
+
+  try {
+    // When: observed paper IDs and the inferred family clue are extracted.
+    const result = await runFingerprint('exact-locators', [source]);
+
+    // Then: each aggregate locator covers its actual regex matches and the family cites FROST's call line.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    assert.equal(fact(document, 'construction.paper_ids').evidence.locator, 'lines 3, 4');
+    const family = fact(document, 'construction.canonical_family');
+    assert.equal(family.evidence.locator, 'line 2');
+    assert.match(family.evidence.rationale, /FROST/);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint aggregates distinct labeled transcript samples in source order', async () => {
+  // Given: a text transcript with distinct repeated modulus and ciphertext labels.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-transcript-samples-'));
+  const source = join(fixtureDirectory, 'transcript.txt');
+  await writeFile(source, [
+    'n = 0x65',
+    'n = 0x67',
+    'e = 0x03',
+    'c = 0x01',
+    'c = 0x02',
+  ].join('\n'), 'utf8');
+
+  try {
+    // When: transcript hex extraction runs.
+    const result = await runFingerprint('transcript-samples', [source]);
+
+    // Then: exact repeated samples are retained in appearance order without inferring a message relation.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    assert.deepEqual(fact(document, 'rsa.moduli').value, [101, 103]);
+    assert.equal(fact(document, 'rsa.moduli').evidence.locator, 'lines 1, 2');
+    assert.deepEqual(fact(document, 'rsa.ciphertexts').value, [1, 2]);
+    assert.equal(fact(document, 'rsa.ciphertexts').evidence.locator, 'lines 4, 5');
+    assert.equal(document.facts.some(({ key }) => key === 'rsa.same_plaintext'), false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint never parses replacement bytes after a checked input path is swapped', async () => {
+  // Given: a deterministic swap at the legacy pathname validation seam.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-path-race-'));
+  const victim = join(fixtureDirectory, 'victim.py');
+  const target = join(fixtureDirectory, 'target.py');
+  await writeFile(victim, 'n = 101\n', 'utf8');
+  await writeFile(target, 'n = 99991\n', 'utf8');
+  const originalDigest = createHash('sha256').update(await readFile(victim)).digest('hex');
+  const harness = [
+    'import json, os, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'import fingerprint',
+    'victim = fingerprint.Path(sys.argv[1])',
+    'target = fingerprint.Path(sys.argv[2])',
+    'original_resolve = fingerprint.Path.resolve',
+    'swapped = [False]',
+    'def swap_after_resolve(path, strict=False):',
+    '  result = original_resolve(path, strict=strict)',
+    '  if path == victim and not swapped[0]:',
+    '    swapped[0] = True',
+    "    os.replace(str(victim), str(victim.with_name('original.py')))",
+    '    os.symlink(str(target), str(victim))',
+    '  return result',
+    'fingerprint.Path.resolve = swap_after_resolve',
+    'try:',
+    "  document = fingerprint.fingerprint('path-race', [str(victim)])",
+    "  print(json.dumps({'ok': True, 'sha256': document['inputs'][0]['sha256'], 'facts': document['facts']}, sort_keys=True))",
+    'except fingerprint.InputError as error:',
+    "  print(json.dumps({'ok': False, 'code': error.code}, sort_keys=True))",
+  ].join('\n');
+
+  try {
+    // When: the public library boundary is interrupted between legacy validation and read operations.
+    const result = await runPython(harness, [victim, target]);
+
+    // Then: it either retains the opened original descriptor or fails with structured input data, never target bytes.
+    assert.equal(result.code, 0, result.stderr);
+    const outcome = JSON.parse(result.stdout);
+    if (outcome.ok) {
+      assert.equal(outcome.sha256, originalDigest);
+      assert.deepEqual(outcome.facts.map(({ key, value }) => ({ key, value })), [{ key: 'rsa.modulus', value: 101 }]);
+    } else {
+      assert.equal(['input-symlink', 'input-unreadable'].includes(outcome.code), true);
+    }
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint emits only documented immutable source anchors', async () => {
+  // Given: one valid repository@SHA/path:line-range anchor and malformed variants.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-anchors-'));
+  const validAnchor = 'github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20';
+  const variants = [
+    ['valid.py', [validAnchor], true],
+    ['bad-sha.py', ['github.com/example/zest@not-a-sha/challenge.py:L1-L20'], false],
+    ['missing-path.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/:L1-L20'], false],
+    ['missing-lines.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py'], false],
+    ['absolute-path.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac//challenge.py:L1-L20'], false],
+    ['traversing-path.py', ['github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/../challenge.py:L1-L20'], false],
+    ['mixed.py', [validAnchor, 'github.com/example/zest@not-a-sha/challenge.py:L1-L20'], false],
+  ];
+
+  try {
+    for (const [name, anchors, shouldEmit] of variants) {
+      const source = join(fixtureDirectory, name);
+      await writeFile(source, `source_anchors = ${JSON.stringify(anchors)}\n`, 'utf8');
+
+      // When: the literal anchor list is fingerprinted at the source boundary.
+      const result = await runFingerprint(`anchor-${name}`, [source]);
+
+      // Then: only a complete immutable shape becomes a provenance fact.
+      assert.equal(result.code, 0, result.stderr);
+      const anchorFact = JSON.parse(result.stdout).facts.find(({ key }) => key === 'construction.source_anchors');
+      assert.equal(anchorFact !== undefined, shouldEmit);
+      if (shouldEmit) {
+        assert.deepEqual(anchorFact.value, [validAnchor]);
+      }
+    }
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => {
+  // Given: a prefix-continuation decoy plus every supported canonical ePrint form.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-eprint-'));
+  const invalid = join(fixtureDirectory, 'invalid.py');
+  const valid = join(fixtureDirectory, 'valid.py');
+  await writeFile(invalid, 'paper = "https://eprint.iacr.org/2020/852evil"\n', 'utf8');
+  await writeFile(valid, [
+    'bare = "https://eprint.iacr.org/2020/852"',
+    'pdf = "https://eprint.iacr.org/2021/123.pdf"',
+  ].join('\n'), 'utf8');
+
+  try {
+    // When: both citation texts are scanned.
+    const invalidResult = await runFingerprint('invalid-eprint', [invalid]);
+    const validResult = await runFingerprint('valid-eprint', [valid]);
+
+    // Then: only complete canonical URL forms become exact paper IDs.
+    assert.equal(invalidResult.code, 0, invalidResult.stderr);
+    assert.equal(JSON.parse(invalidResult.stdout).facts.some(({ key }) => key === 'construction.paper_ids'), false);
+    assert.equal(validResult.code, 0, validResult.stderr);
+    assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['eprint:2020/852', 'eprint:2021/123']);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint requires explicit aligned samples for either same_plaintext value', async () => {
+  // Given: unaligned false evidence plus explicit aligned true and false evidence.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-alignment-'));
+  const unaligned = join(fixtureDirectory, 'unaligned.py');
+  const alignedTrue = join(fixtureDirectory, 'aligned-true.py');
+  const alignedFalse = join(fixtureDirectory, 'aligned-false.py');
+  await writeFile(unaligned, 'same_plaintext = False\n', 'utf8');
+  await writeFile(alignedTrue, 'moduli = [101, 103]\nciphertexts = [1, 2]\nsame_plaintext = True\n', 'utf8');
+  await writeFile(alignedFalse, 'moduli = [101, 103]\nciphertexts = [1, 2]\nsame_plaintext = False\n', 'utf8');
+
+  try {
+    // When: each explicit Boolean claim crosses the extraction boundary.
+    const unalignedDocument = JSON.parse((await runFingerprint('unaligned-false', [unaligned])).stdout);
+    const trueDocument = JSON.parse((await runFingerprint('aligned-true', [alignedTrue])).stdout);
+    const falseDocument = JSON.parse((await runFingerprint('aligned-false', [alignedFalse])).stdout);
+
+    // Then: only paired modulus/ciphertext sequences admit either relation value.
+    assert.equal(unalignedDocument.facts.some(({ key }) => key === 'rsa.same_plaintext'), false);
+    assert.equal(fact(trueDocument, 'rsa.same_plaintext').value, true);
+    assert.equal(fact(falseDocument, 'rsa.same_plaintext').value, false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint adversarial documents are deterministic and parse through the public boundary', async () => {
+  // Given: a source combining exact facts, citations, a valid anchor, and a family clue.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-deterministic-'));
+  const source = join(fixtureDirectory, 'adversarial.py');
+  await writeFile(source, [
+    'moduli = [101, 103]',
+    'ciphertexts = [1, 2]',
+    'same_plaintext = True',
+    'paper = "https://eprint.iacr.org/2020/852.pdf"',
+    'source_anchors = ["github.com/example/zest@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20"]',
+    'protocol = FROST()',
+  ].join('\n'), 'utf8');
+
+  try {
+    // When: the exact same input is fingerprinted twice.
+    const first = await runFingerprint('deterministic-adversarial', [source]);
+    const second = await runFingerprint('deterministic-adversarial', [source]);
+
+    // Then: bytes are stable and the parser accepts the emitted provenance graph.
+    assert.equal(first.code, 0, first.stderr);
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(first.stdout, second.stdout);
+    const document = JSON.parse(first.stdout);
+    assert.equal(new Set(document.facts.map(({ key }) => key)).size, document.facts.length);
+    assert.deepEqual(await parseFingerprintDocument(document), { ok: true });
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }
