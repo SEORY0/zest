@@ -60,6 +60,8 @@ def is_canonical_https_url(value, repository=False):
 
     if not isinstance(value, str) or not value or not value.isascii():
         return False
+    if value != value.strip() or not value.startswith("https://"):
+        return False
     if CONTROL_RE.search(value) or "\\" in value:
         return False
     try:

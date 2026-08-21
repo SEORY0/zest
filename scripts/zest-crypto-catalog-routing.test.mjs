@@ -54,7 +54,7 @@ function observedFact(id, key, value, valueType, locator = 'source-derived') {
 
 function fingerprint(caseId, facts, capabilities) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     case_id: caseId,
     inputs: [{
       id: 'source', path: 'inputs/source.py', sha256: '3'.repeat(64), media_type: 'text/x-python',

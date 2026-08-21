@@ -222,6 +222,7 @@ class VerificationStep:
 
 @dataclass(frozen=True)
 class AttackCard:
+    schema_version: int
     id: CardId
     version: int
     canonical_family_id: str

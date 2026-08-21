@@ -70,11 +70,18 @@ def main(arguments: Sequence[str]) -> int:
         fingerprint = parse_fingerprint(raw_fingerprint)
         cards = parse_catalog(raw_catalog)
         issues = validate_catalog(cards, Path(__file__).resolve().parents[1])
+        if not issues:
+            report = rank_cards_with_digests(
+                fingerprint,
+                cards,
+                canonical_digest(raw_fingerprint),
+                canonical_digest(raw_catalog),
+            )
     except ParseError as error:
         return _failure(CatalogIssue(error.path, error.code, error.detail))
     if issues:
         return _failure(issues[0])
-    _write(rank_cards_with_digests(fingerprint, cards, canonical_digest(raw_fingerprint), canonical_digest(raw_catalog)).to_document())
+    _write(report.to_document())
     return 0
 
 

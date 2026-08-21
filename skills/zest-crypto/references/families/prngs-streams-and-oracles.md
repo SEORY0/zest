@@ -23,7 +23,7 @@ query budget already recorded by the case.
 - **Primary citation:** Matsumoto and Nishimura, *Mersenne Twister: A 623-dimensionally
   equidistributed uniform pseudo-random number generator*, DOI
   `10.1145/272991.272995`, 1998.
-- **Pinned challenge example:** No external mapping is asserted in v1. Pin the exact
+- **Pinned challenge example:** No external mapping is asserted by this card. Pin the exact
   output API and a held-out word sequence before eligibility.
 
 ## `oracle.cbc-padding`
@@ -48,7 +48,7 @@ query budget already recorded by the case.
 - **Primary citation:** Vaudenay, *Security flaws induced by CBC padding: applications to
   SSL, IPSEC, WTLS*, EUROCRYPT 2002 author/proceedings PDF at
   `https://www.iacr.org/archive/eurocrypt2002/23320530/cbc02_e02d.pdf`.
-- **Pinned challenge example:** No remote challenge is pinned in v1. A case must pin its
+- **Pinned challenge example:** No remote challenge is pinned by this card. A case must pin its
   authorized protocol/version and local replay harness before attempting queries.
 
 ## `stream.lfsr.known-plaintext`

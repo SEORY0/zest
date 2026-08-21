@@ -1,6 +1,6 @@
 [
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "rsa.wiener.small-d",
     "version": 1,
     "title": "Wiener attack on a small RSA private exponent",
@@ -43,7 +43,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "rsa.common-modulus.coprime-exponents",
     "version": 1,
     "title": "RSA common modulus with coprime exponents",
@@ -86,7 +86,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "rsa.hastad.broadcast",
     "version": 1,
     "title": "Hastad broadcast attack for exponent three",
@@ -129,7 +129,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "rsa.franklin-reiter.related-message",
     "version": 1,
     "title": "Franklin-Reiter related-message RSA",
@@ -170,7 +170,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "lattice.coppersmith.univariate-small-root",
     "version": 1,
     "title": "Coppersmith univariate modular small root",
@@ -213,7 +213,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "signature.ecdsa.reused-nonce",
     "version": 1,
     "title": "ECDSA repeated-nonce key recovery",
@@ -248,14 +248,14 @@
       {"kind": "standard", "paper_id": "doi:10.6028/NIST.FIPS.186-5", "title": "Digital Signature Standard (DSS)", "url": "https://doi.org/10.6028/NIST.FIPS.186-5", "year": 2023, "section": "Section 6.4 ECDSA signature generation and verification", "assumptions": ["Both signatures are valid ECDSA signatures in one prime-order subgroup, use the exact message representatives, and their nonce points are equal or exact inverses with the same r."], "verified_on": "2026-08-21"}
     ],
     "examples": [
-      {"challenge_id": "zest-ecdsa-reuse-template", "event": "Zest crypto package", "year": 2026, "source_kind": "local", "repo_url": null, "repo_sha": null, "source_path": "assets/solver-templates/ecdsa_nonce_reuse.py", "source_lines": "L1-L344", "inference_level": "direct"}
+      {"challenge_id": "zest-ecdsa-reuse-template", "event": "Zest crypto package", "year": 2026, "source_kind": "local", "repo_url": null, "repo_sha": null, "source_path": "assets/solver-templates/ecdsa_nonce_reuse.py", "source_lines": "L1-L298", "inference_level": "direct"}
     ],
     "verification": [
       {"kind": "equation", "instruction": "Verify dG equals the public key; both original public ECDSA verification equations pass; each signed nonce scalar satisfies its private signature equation and reproduces the exact verifier nonce point; and the two nonce points are equal or exact inverses as reported."}
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "signature.ecdsa.partial-nonce-hnp",
     "version": 1,
     "title": "ECDSA partial-nonce hidden-number attack",
@@ -297,7 +297,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "prng.mt19937.state-clone",
     "version": 1,
     "title": "MT19937 state cloning from aligned outputs",
@@ -338,7 +338,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "oracle.cbc-padding",
     "version": 1,
     "title": "CBC padding-response oracle",
@@ -379,7 +379,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.matrix-product.trace-lattice",
     "version": 1,
     "title": "Matrix-product trace-invariant attack routing",
@@ -427,7 +427,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.stream-cipher.fca-lwpm",
     "version": 1,
     "title": "Fast-correlation adaptation via low-weight polynomial multiples",
@@ -472,7 +472,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.ecdsa.lcg-nonce",
     "version": 1,
     "title": "ECDSA algebraically related LCG nonces",
@@ -520,7 +520,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.wagner.generalized-birthday",
     "version": 1,
     "title": "Wagner generalized birthday list merge",
@@ -566,7 +566,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.frost.threshold-signature",
     "version": 1,
     "title": "FROST threshold-signature construction routing",
@@ -611,7 +611,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.uov.wrapper-structure",
     "version": 1,
     "title": "UOV challenge-wrapper structure",
@@ -657,7 +657,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "paper.csidh.auxiliary-point-leak",
     "version": 1,
     "title": "CSIDH auxiliary-point wrapper leak",
@@ -707,7 +707,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "lattice.subset-sum.query-schedule",
     "version": 1,
     "title": "Subset-sum recovery from an adaptive query schedule",
@@ -753,7 +753,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "stream.lfsr.known-plaintext",
     "version": 1,
     "title": "Galois LFSR recovery from aligned known plaintext",
@@ -798,7 +798,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "symmetric.slide.periodic-round",
     "version": 1,
     "title": "Slide attack after periodic-round wrapper normalization",
@@ -849,7 +849,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "oracle.goldwasser-micali.replication",
     "version": 1,
     "title": "Goldwasser-Micali ciphertext replication against a key wrapper",
@@ -898,7 +898,7 @@
     ]
   },
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "symmetric.rotor.group-conjugacy",
     "version": 1,
     "title": "Rotor wiring recovery by observed permutation conjugacy",

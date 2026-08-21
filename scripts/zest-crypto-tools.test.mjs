@@ -188,6 +188,13 @@ async function documentedAttackCard() {
   return jsonFenceAfter(contents, 'The following complete card')[0];
 }
 
+async function attackCardForSchema(schemaVersion) {
+  const card = await documentedAttackCard();
+  card.schema_version = schemaVersion;
+  if (schemaVersion === 1) delete card.examples[0].source_kind;
+  return card;
+}
+
 function cloneDocument(document) {
   return JSON.parse(JSON.stringify(document));
 }
@@ -1069,7 +1076,7 @@ test('fingerprint emits literal RSA broadcast facts without mutating its input',
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr, '');
   const document = JSON.parse(result.stdout);
-  assert.equal(document.schema_version, 1);
+  assert.equal(document.schema_version, 2);
   assert.equal(document.case_id, 'rsa-literals');
   assert.equal(document.inputs.length, 1);
   assert.equal(document.inputs[0].sha256, createHash('sha256').update(before).digest('hex'));
@@ -1685,5 +1692,80 @@ test('ranker CLI hashes exact decoded raw inputs with omitted constraint default
     const report = JSON.parse(result.stdout);
     assert.equal(report.fingerprint_sha256, canonicalDigest(fingerprint));
     assert.equal(report.catalog_sha256, canonicalDigest(catalogDocument));
+  });
+});
+
+test('rankers preserve declared v1 and v2 versions and version-specific digests', async () => {
+  const baseFingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  for (const schemaVersion of [1, 2]) {
+    const fingerprintDocument = { ...cloneDocument(baseFingerprint), schema_version: schemaVersion };
+    const card = await attackCardForSchema(schemaVersion);
+    card.tooling = [];
+    const catalogDocument = [card];
+
+    await withTemporaryRankingInputs(`zest-crypto-schema-v${schemaVersion}-`, fingerprintDocument, catalogDocument, async (fingerprintPath, catalogPath) => {
+      for (const result of [await runRanker(fingerprintPath, catalogPath), await rankLibrary(fingerprintPath, catalogPath)]) {
+        assert.equal(result.code, 0, result.stderr || result.stdout);
+        const report = JSON.parse(result.stdout);
+        assert.equal(report.schema_version, schemaVersion);
+        assert.equal(report.fingerprint_sha256, canonicalDigest(fingerprintDocument));
+        assert.equal(report.catalog_sha256, canonicalDigest(catalogDocument));
+      }
+    });
+  }
+});
+
+test('ranker rejects fingerprint and catalog schema mismatches deterministically', async () => {
+  const baseFingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  for (const [fingerprintVersion, catalogVersion] of [[1, 2], [2, 1]]) {
+    const fingerprintDocument = { ...cloneDocument(baseFingerprint), schema_version: fingerprintVersion };
+    const card = await attackCardForSchema(catalogVersion);
+    card.tooling = [];
+    await withTemporaryRankingInputs(
+      `zest-crypto-schema-mismatch-${fingerprintVersion}-${catalogVersion}-`,
+      fingerprintDocument,
+      [card],
+      async (fingerprintPath, catalogPath) => {
+        const result = await runRanker(fingerprintPath, catalogPath);
+        assert.equal(result.code, 2, result.stderr);
+        assert.deepEqual(JSON.parse(result.stdout), {
+          ok: false,
+          issues: [{ path: '$[0].schema_version', code: 'schema-version-mismatch' }],
+        });
+      },
+    );
+  }
+});
+
+test('current v2 catalog and fingerprint fixtures round-trip as typed values', async () => {
+  const fixturePaths = [blockedSageFingerprint, hastadFingerprint, inferredFamilyFingerprint,
+    join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json')];
+  const script = [
+    'import json, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'from zest_crypto_conditions import _catalog_document, _fingerprint_document',
+    'from zest_crypto_parse import parse_catalog, parse_fingerprint',
+    "with open(sys.argv[1], encoding='utf-8') as handle:",
+    '  raw_catalog = json.load(handle)',
+    'cards = parse_catalog(raw_catalog)',
+    'assert parse_catalog(list(_catalog_document(cards))) == cards',
+    'documents = []',
+    'for path in sys.argv[2:]:',
+    "  with open(path, encoding='utf-8') as handle:",
+    '    value = json.load(handle)',
+    "  documents.extend(value.values() if isinstance(value, dict) and 'schema_version' not in value else (value,))",
+    'fingerprints = [parse_fingerprint(document) for document in documents]',
+    'assert all(parse_fingerprint(_fingerprint_document(item)) == item for item in fingerprints)',
+    "print(json.dumps({'cards': len(cards), 'fingerprints': len(fingerprints), 'versions': sorted({card.schema_version for card in cards} | {item.schema_version for item in fingerprints}), 'source_kinds': sorted({example.source_kind for card in cards for example in card.examples}), 'inference_levels': sorted({example.inference_level for card in cards for example in card.examples})}))",
+  ].join('\n');
+
+  const result = await runPython(script, [catalog, ...fixturePaths]);
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    cards: 21,
+    fingerprints: 13,
+    versions: [2],
+    source_kinds: ['local', 'remote'],
+    inference_levels: ['direct', 'inferred', 'variant'],
   });
 });

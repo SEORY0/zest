@@ -56,7 +56,7 @@ requires a concrete equation, sufficient bound, and faithful reduced check.
   digital signature algorithm with partially known nonces*, DOI
   `10.1023/A:1025436905711`, 2003, for known-bit models; Breitner and Heninger, ePrint
   `2019/023`, only for bias instances matching that paper's stated model.
-- **Pinned challenge example:** No external mapping is asserted in v1. Pin the leakage
+- **Pinned challenge example:** No external mapping is asserted by this card. Pin the leakage
   extraction code and exact message-to-`z` conversion before making this card eligible.
 
 ## `lattice.subset-sum.query-schedule`

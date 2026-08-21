@@ -1,9 +1,12 @@
 # AttackCard and fingerprint schema
 
-The catalog and fingerprint formats are versioned JSON boundaries. Version `1`
-is the only accepted version. Decode JSON once at the command boundary, then
-pass the resulting JSON value to `parse_fingerprint` or `parse_catalog`; never
-place serialized JSON inside a fact or card field.
+The catalog and fingerprint formats are versioned JSON boundaries. Versions
+`1` and `2` are accepted; version `2` is current and is emitted by new
+fingerprints and the shipped catalog. Version `1` remains readable as the exact
+original contract. Decode JSON once at the command boundary, then pass the
+resulting JSON value to `parse_fingerprint` or `parse_catalog`; never place
+serialized JSON inside a fact or card field. Any other version fails with
+`unknown-schema-version`.
 
 `validate_attack_cards.py ATTACK_CARDS_JSON` writes one JSON object to standard
 output. It exits `0` for a valid catalog:
@@ -37,7 +40,7 @@ are intentionally not emitted.
 A fingerprint object has exactly these top-level fields:
 
 ```text
-schema_version: integer  (must be 1)
+schema_version: integer  (must be 1 or 2)
 case_id: string
 inputs: InputArtifact[]
 facts: Fact[]
@@ -93,10 +96,6 @@ The finite v1 fact vocabulary is:
 | `signature.nonce_leak_bits` | `integer` |
 | `signature.nonce_bias_bound` | `integer` |
 | `signature.nonce_recurrence` | `string` |
-| `signature.nonce_leak_orientation` | `string` |
-| `signature.hnp_model` | `string` |
-| `signature.hnp_parameter_bound_verified` | `boolean` |
-| `signature.nonce_projection_bound_verified` | `boolean` |
 | `prng.family` | `string` |
 | `prng.output_count` | `integer` |
 | `prng.output_word_bits` | `integer` |
@@ -105,14 +104,23 @@ The finite v1 fact vocabulary is:
 | `oracle.distinguishable_response` | `boolean` |
 | `oracle.chosen_ciphertext` | `boolean` |
 | `oracle.query_budget` | `integer` |
-| `oracle.recovery_bytes` | `integer` |
 | `construction.canonical_family` | `string` |
 | `construction.paper_ids` | `string_list` |
 | `construction.source_anchors` | `string_list` |
 | `construction.parameter_signature` | `string_list` |
 | `construction.toy_invariant_verified` | `boolean` |
-| `construction.exploit_invariant_verified` | `boolean` |
 | `construction.negative_matches_checked` | `string_list` |
+
+Version 2 retains every v1 key and adds exactly these six keys:
+
+| Fact key | Value type |
+| --- | --- |
+| `signature.nonce_leak_orientation` | `string` |
+| `signature.hnp_model` | `string` |
+| `signature.hnp_parameter_bound_verified` | `boolean` |
+| `signature.nonce_projection_bound_verified` | `boolean` |
+| `oracle.recovery_bytes` | `integer` |
+| `construction.exploit_invariant_verified` | `boolean` |
 
 Unknown keys and a mismatched `value_type` are rejected. Fact IDs and fact keys
 must each be unique within a fingerprint; card IDs must be unique within the
@@ -182,16 +190,25 @@ or redundant component, or otherwise escape the skill root. The parser
 validates containment but does not test file presence: packaged template
 existence is a separate package-integrity check.
 
-Each citation has `kind`, non-empty `paper_id`, `title`, canonical HTTPS `url`, positive
-`year`, `section`, non-empty string-array `assumptions`, and `verified_on`.
-Each pinned example has `challenge_id`, `event`, positive `year`, `source_kind`,
-`repo_url`, `repo_sha`, normalized relative `source_path`, one inclusive
-`source_lines` span in canonical `Lx-Ly` form, and `inference_level` (`direct`,
-`inferred`, or `variant`). A `remote` example requires a canonical HTTPS
-repository URL without query or fragment and a 40-lowercase-hex commit SHA. A
-`local` example requires both repository fields to be `null` and its source
-path to remain inside the skill package. Cards with IDs starting `paper.` are
-research tier and require at least one pinned example.
+Each citation has `kind`, non-empty `paper_id`, `title`, canonical HTTPS `url`,
+positive `year`, `section`, non-empty string-array `assumptions`, and
+`verified_on`. Canonical HTTPS strings have no leading or trailing whitespace
+and begin with the exact lowercase bytes `https://` before URL parsing.
+
+The v1 pinned-example object has `challenge_id`, `event`, positive `year`,
+canonical HTTPS `repo_url`, a 40-lowercase-hex `repo_sha`, normalized relative
+`source_path`, one inclusive `source_lines` span in canonical `Lx-Ly` form, and
+`inference_level` (`direct` or `inferred`). It is remote-only and does not have
+`source_kind`. Parsing v1 creates a typed example with `source_kind=remote`,
+while serialization restores the original v1 wire shape and declared version.
+
+Version 2 adds mandatory `source_kind` and the `variant` inference level. A
+`remote` v2 example requires the same canonical repository URL and commit SHA.
+A `local` v2 example requires both repository fields to be `null` and its
+source path to remain inside the skill package. V2-only fields or values are
+invalid under v1, and the source-kind-less v1 shape is invalid under v2. Cards
+with IDs starting `paper.` are research tier and require at least one pinned
+example.
 `cheap_probes` have `id`, `instruction`, non-negative `max_seconds`, and
 `produces_facts`; procedure entries have `id` and `instruction`; verification
 entries have `kind` and `instruction`.
@@ -201,7 +218,7 @@ The following complete card is valid JSON and parses with `parse_catalog`:
 ```json
 [
   {
-    "schema_version": 1,
+    "schema_version": 2,
     "id": "rsa.hastad.broadcast",
     "version": 1,
     "title": "Hastad broadcast example",
@@ -301,9 +318,17 @@ The following complete card is valid JSON and parses with `parse_catalog`:
 
 ## Rank report
 
-The ranker emits a versioned report with the SHA-256 digests of the exact
-fingerprint and catalog JSON inputs, plus `eligible`, `blocked`, and `rejected`
-arrays. An eligible result includes `card_id`, signed integer `score`,
+The ranker accepts a catalog only when every card declares the same schema
+version. A mixed catalog fails at the first differing card with
+`mixed-schema-versions`. The fingerprint version must then equal the catalog
+version; a mismatch fails with `schema-version-mismatch`. Compatible v1/v1 and
+v2/v2 inputs produce a report carrying that declared version. The CLI digests
+the exact decoded fingerprint and catalog JSON inputs, so the internal v1
+example migration never rewrites either digest. The version-aware library
+serializer restores the corresponding v1 or v2 wire shape.
+
+The ranker emits a versioned report with those SHA-256 digests plus `eligible`,
+`blocked`, and `rejected` arrays. An eligible result includes `card_id`, signed integer `score`,
 `matched_signals`, `unmatched_signals`, `evidence_fact_ids`, and
 `required_tools`. Every blocked or rejected entry has exactly `card_id`,
 `rule_id`, `reason`, and `evidence_fact_ids`. `rule_id` is the stable ID of the
@@ -314,7 +339,7 @@ The complete JSON below is parseable and illustrates every public entry shape.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "fingerprint_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "catalog_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "eligible": [
@@ -355,7 +380,9 @@ The parser reports a single first failure. Important diagnostic codes are
 `invalid-template-path`, `missing-citation-identifier`, and
 `research-card-missing-pinned-example`. Source-boundary diagnostics include
 `invalid-citation-url`, `invalid-repository-url`, `invalid-source-anchor`,
-`invalid-source-lines`, and `invalid-local-example`. `input-undecodable` and
+`invalid-source-lines`, and `invalid-local-example`. Version-boundary
+diagnostics include `mixed-schema-versions` and `schema-version-mismatch`.
+`input-undecodable` and
 `input-too-deep` normalize expected untrusted input boundary failures;
 `non-finite-number` rejects non-finite decoded programmatic values.
 `invalid-card-id` is used for a card ID outside the lowercase dotted/hyphenated

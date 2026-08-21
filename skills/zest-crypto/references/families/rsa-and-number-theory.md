@@ -53,7 +53,7 @@ Apply the six [literature and adaptation gates](../literature.md) and keep the
   three, distinct moduli, and a derived pairwise-coprime fact.
 - **Equations:** CRT gives `C=m^3 mod N` for `N=product(n_i)`; in the covered sufficient
   case `m^3<N`, so `m` is the exact integer cube root of `C`.
-- **Hard assumptions:** This v1 card intentionally requires `e=3`, at least three
+- **Hard assumptions:** This card intentionally requires `e=3`, at least three
   aligned samples, pairwise-coprime moduli, and an unpadded common representative.
 - **Cheapest falsifier:** Pairwise gcd followed by CRT and an exact cube-root check.
 - **Expected cost:** Low; bounded CRT product, exact integer root, and public equations.
@@ -89,5 +89,5 @@ Apply the six [literature and adaptation gates](../literature.md) and keep the
 - **Primary citation:** Coppersmith, Franklin, Patarin, and Reiter, *Low-exponent RSA
   with related messages*, EUROCRYPT 1996 author PDF at
   `https://users.ece.cmu.edu/~reiter/papers/1996/Eurocrypt.pdf`.
-- **Pinned challenge example:** No external mapping is asserted in v1. Treat the card as
+- **Pinned challenge example:** No external mapping is asserted by this card. Treat the card as
   blocked until exact challenge source and relation coefficients are pinned.

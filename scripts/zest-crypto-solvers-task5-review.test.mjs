@@ -93,3 +93,15 @@ test('ECDSA skips a noninvertible same-nonce denominator and proves the opposite
     { k: 77, nonceRelation: 'opposite', privateScalar: 123 },
   );
 });
+
+test('ECDSA copied template stays within the 250 pure-line portability gate', async () => {
+  // Given: the self-contained solver source as counted by the mandatory programming checker.
+  const source = await readFile(join(templates, 'ecdsa_nonce_reuse.py'), 'utf8');
+
+  // When: blank and comment-only lines are excluded from its portable implementation size.
+  const pureLines = source.split(/\r?\n/).filter((line) => line.trim() && !line.trimStart().startsWith('#'));
+
+  // Then: the copied template remains reviewable without a SIZE_OK escape hatch.
+  assert.equal(source.includes('noqa: SIZE_OK'), false);
+  assert.equal(pureLines.length <= 250, true, `ECDSA template has ${pureLines.length} pure lines`);
+});

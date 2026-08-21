@@ -53,9 +53,10 @@ from zest_crypto_source import (
 )
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = frozenset((1, 2))
 
-FACT_VALUE_TYPES: Dict[str, str] = {
+V1_FACT_VALUE_TYPES: Dict[str, str] = {
     "rsa.modulus": "integer",
     "rsa.moduli": "integer_list",
     "rsa.public_exponent": "integer",
@@ -78,10 +79,6 @@ FACT_VALUE_TYPES: Dict[str, str] = {
     "signature.nonce_leak_bits": "integer",
     "signature.nonce_bias_bound": "integer",
     "signature.nonce_recurrence": "string",
-    "signature.nonce_leak_orientation": "string",
-    "signature.hnp_model": "string",
-    "signature.hnp_parameter_bound_verified": "boolean",
-    "signature.nonce_projection_bound_verified": "boolean",
     "prng.family": "string",
     "prng.output_count": "integer",
     "prng.output_word_bits": "integer",
@@ -90,14 +87,25 @@ FACT_VALUE_TYPES: Dict[str, str] = {
     "oracle.distinguishable_response": "boolean",
     "oracle.chosen_ciphertext": "boolean",
     "oracle.query_budget": "integer",
-    "oracle.recovery_bytes": "integer",
     "construction.canonical_family": "string",
     "construction.paper_ids": "string_list",
     "construction.source_anchors": "string_list",
     "construction.parameter_signature": "string_list",
     "construction.toy_invariant_verified": "boolean",
-    "construction.exploit_invariant_verified": "boolean",
     "construction.negative_matches_checked": "string_list",
+}
+V2_FACT_VALUE_TYPES: Dict[str, str] = {
+    "signature.nonce_leak_orientation": "string",
+    "signature.hnp_model": "string",
+    "signature.hnp_parameter_bound_verified": "boolean",
+    "signature.nonce_projection_bound_verified": "boolean",
+    "oracle.recovery_bytes": "integer",
+    "construction.exploit_invariant_verified": "boolean",
+}
+FACT_VALUE_TYPES = {**V1_FACT_VALUE_TYPES, **V2_FACT_VALUE_TYPES}
+FACT_VALUE_TYPES_BY_SCHEMA = {
+    1: V1_FACT_VALUE_TYPES,
+    2: FACT_VALUE_TYPES,
 }
 
 VALUE_TYPES = frozenset(("boolean", "integer", "number", "string", "integer_list", "string_list"))
@@ -159,8 +167,8 @@ def _string_array(raw: Any, path: str, nonempty: bool = False) -> Tuple[str, ...
 
 def _check_schema_version(value: Any, path: str) -> int:
     version = _integer(value, path, 1)
-    if version != SCHEMA_VERSION:
-        _fail(path, "unknown-schema-version", "supported schema version is {0}".format(SCHEMA_VERSION))
+    if version not in SUPPORTED_SCHEMA_VERSIONS:
+        _fail(path, "unknown-schema-version", "supported schema versions are 1 and 2")
     return version
 
 
@@ -263,6 +271,7 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
         ("schema_version", "case_id", "inputs", "facts", "capabilities", "constraints"),
     )
     schema_version = _check_schema_version(value["schema_version"], "$.schema_version")
+    fact_value_types = FACT_VALUE_TYPES_BY_SCHEMA[schema_version]
     inputs = tuple(_parse_input(item, "$.inputs[{0}]".format(index)) for index, item in enumerate(_array(value["inputs"], "$.inputs")))
     _check_unique([item.id for item in inputs], "$.inputs", "duplicate-input-id")
 
@@ -271,12 +280,12 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
         path = "$.facts[{0}]".format(index)
         item_value = _object(item, path, ("id", "key", "value", "value_type", "status", "evidence"), ("id", "key", "value", "value_type", "status", "evidence"))
         key_value = _string(item_value["key"], path + ".key", "invalid-fact-key")
-        if key_value not in FACT_VALUE_TYPES:
-            _fail(path + ".key", "unknown-fact-key", "fact key is not in schema version {0}".format(SCHEMA_VERSION))
+        if key_value not in fact_value_types:
+            _fail(path + ".key", "unknown-fact-key", "fact key is not in schema version {0}".format(schema_version))
         value_type = _string(item_value["value_type"], path + ".value_type", "invalid-value-type")
         if value_type not in VALUE_TYPES:
             _fail(path + ".value_type", "invalid-value-type", "value type is not supported")
-        expected_type = FACT_VALUE_TYPES[key_value]
+        expected_type = fact_value_types[key_value]
         if value_type != expected_type:
             _fail(path + ".value_type", "fact-value-type-mismatch", "{0} facts require {1}".format(key_value, expected_type))
         try:
@@ -385,7 +394,8 @@ def _reject_derived_fact_cycles(facts: Sequence[Fact], dependencies: Dict[FactId
         raise AssertionError("unreachable")
 
 
-def _parse_condition(raw: Any, path: str, boolean_depth: int = 0) -> Condition:
+def _parse_condition(raw: Any, path: str, schema_version: int, boolean_depth: int = 0) -> Condition:
+    fact_value_types = FACT_VALUE_TYPES_BY_SCHEMA[schema_version]
     value = _object(raw, path, ("fact", "op", "value", "all", "any", "not"), ())
     names = set(value)
     group_names = names.intersection(("all", "any", "not"))
@@ -397,19 +407,19 @@ def _parse_condition(raw: Any, path: str, boolean_depth: int = 0) -> Condition:
         group_name = next(iter(group_names))
         group_path = path + "." + group_name
         if group_name == "not":
-            return Condition(None, None, None, (), (), _parse_condition(value[group_name], group_path, boolean_depth + 1))
+            return Condition(None, None, None, (), (), _parse_condition(value[group_name], group_path, schema_version, boolean_depth + 1))
         children = _array(value[group_name], group_path)
         if not children:
             _fail(group_path, "empty-condition-group", "boolean condition groups require at least one condition")
-        parsed = tuple(_parse_condition(item, "{0}[{1}]".format(group_path, index), boolean_depth + 1) for index, item in enumerate(children))
+        parsed = tuple(_parse_condition(item, "{0}[{1}]".format(group_path, index), schema_version, boolean_depth + 1) for index, item in enumerate(children))
         if group_name == "all":
             return Condition(None, None, None, parsed, (), None)
         return Condition(None, None, None, (), parsed, None)
     if names.difference(("fact", "op", "value")) or "fact" not in value or "op" not in value:
         _fail(path, "invalid-condition", "a predicate requires fact and op")
     fact_key = _string(value["fact"], path + ".fact", "invalid-fact-key")
-    if fact_key not in FACT_VALUE_TYPES:
-        _fail(path + ".fact", "unknown-fact-key", "fact key is not in schema version {0}".format(SCHEMA_VERSION))
+    if fact_key not in fact_value_types:
+        _fail(path + ".fact", "unknown-fact-key", "fact key is not in schema version {0}".format(schema_version))
     try:
         operator = Operator(value["op"])
     except (TypeError, ValueError):
@@ -420,7 +430,7 @@ def _parse_condition(raw: Any, path: str, boolean_depth: int = 0) -> Condition:
         return Condition(FactKey(fact_key), operator, None, (), (), None)
     if "value" not in value:
         _fail(path + ".value", "missing-field", "predicate value is required")
-    return Condition(FactKey(fact_key), operator, _parse_condition_value(value["value"], FACT_VALUE_TYPES[fact_key], operator, path + ".value"), (), (), None)
+    return Condition(FactKey(fact_key), operator, _parse_condition_value(value["value"], fact_value_types[fact_key], operator, path + ".value"), (), (), None)
 
 
 def _parse_condition_value(raw: Any, value_type: str, operator: Operator, path: str) -> FactValue:
@@ -453,27 +463,27 @@ def _parse_condition_value(raw: Any, value_type: str, operator: Operator, path: 
     raise AssertionError("unreachable")
 
 
-def _parse_rule(raw: Any, path: str) -> Rule:
+def _parse_rule(raw: Any, path: str, schema_version: int) -> Rule:
     value = _object(raw, path, ("id", "when", "reason"), ("id", "when", "reason"))
-    return Rule(_string(value["id"], path + ".id"), _parse_condition(value["when"], path + ".when"), _string(value["reason"], path + ".reason"))
+    return Rule(_string(value["id"], path + ".id"), _parse_condition(value["when"], path + ".when", schema_version), _string(value["reason"], path + ".reason"))
 
 
-def _parse_signal(raw: Any, path: str) -> Signal:
+def _parse_signal(raw: Any, path: str, schema_version: int) -> Signal:
     value = _object(raw, path, ("id", "when", "weight", "reason"), ("id", "when", "weight", "reason"))
     weight = _integer(value["weight"], path + ".weight")
     if weight < -100 or weight > 100:
         _fail(path + ".weight", "invalid-signal-weight", "weight must be between -100 and 100")
-    return Signal(_string(value["id"], path + ".id"), _parse_condition(value["when"], path + ".when"), weight, _string(value["reason"], path + ".reason"))
+    return Signal(_string(value["id"], path + ".id"), _parse_condition(value["when"], path + ".when", schema_version), weight, _string(value["reason"], path + ".reason"))
 
 
-def _parse_negative_match(raw: Any, path: str) -> NegativeMatch:
+def _parse_negative_match(raw: Any, path: str, schema_version: int) -> NegativeMatch:
     value = _object(raw, path, ("id", "when", "reason", "unknown_policy"), ("id", "when", "reason", "unknown_policy"))
     policy = value["unknown_policy"]
     if policy not in ("ignore", "block"):
         _fail(path + ".unknown_policy", "invalid-unknown-policy", "expected ignore or block")
     return NegativeMatch(
         _string(value["id"], path + ".id"),
-        _parse_condition(value["when"], path + ".when"),
+        _parse_condition(value["when"], path + ".when", schema_version),
         _string(value["reason"], path + ".reason"),
         policy,
     )
@@ -528,16 +538,17 @@ def _parse_citation(raw: Any, path: str) -> Citation:
     )
 
 
-def _parse_example(raw: Any, path: str) -> PinnedExample:
-    value = _object(
-        raw,
-        path,
-        ("challenge_id", "event", "year", "source_kind", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
-        ("challenge_id", "event", "year", "source_kind", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level"),
-    )
-    source_kind = value["source_kind"]
-    if source_kind not in ("remote", "local"):
-        _fail(path + ".source_kind", "invalid-source-kind", "expected remote or local")
+def _parse_example(raw: Any, path: str, schema_version: int) -> PinnedExample:
+    common_fields = ("challenge_id", "event", "year", "repo_url", "repo_sha", "source_path", "source_lines", "inference_level")
+    if schema_version == 1:
+        value = _object(raw, path, common_fields, common_fields)
+        source_kind = "remote"
+    else:
+        fields = common_fields + ("source_kind",)
+        value = _object(raw, path, fields, fields)
+        source_kind = value["source_kind"]
+        if source_kind not in ("remote", "local"):
+            _fail(path + ".source_kind", "invalid-source-kind", "expected remote or local")
     repo_url = value["repo_url"]
     repo_sha = value["repo_sha"]
     if source_kind == "remote":
@@ -552,8 +563,9 @@ def _parse_example(raw: Any, path: str) -> PinnedExample:
     if not is_canonical_source_lines(source_lines):
         _fail(path + ".source_lines", "invalid-source-lines", "expected one canonical inclusive Lx-Ly range")
     level = value["inference_level"]
-    if level not in ("direct", "inferred", "variant"):
-        _fail(path + ".inference_level", "invalid-inference-level", "expected direct, inferred, or variant")
+    levels = ("direct", "inferred") if schema_version == 1 else ("direct", "inferred", "variant")
+    if level not in levels:
+        _fail(path + ".inference_level", "invalid-inference-level", "expected {0}".format(", ".join(levels)))
     return PinnedExample(
         _string(value["challenge_id"], path + ".challenge_id"),
         _string(value["event"], path + ".event"),
@@ -567,12 +579,13 @@ def _parse_example(raw: Any, path: str) -> PinnedExample:
     )
 
 
-def _parse_probe(raw: Any, path: str) -> CheapProbe:
+def _parse_probe(raw: Any, path: str, schema_version: int) -> CheapProbe:
     value = _object(raw, path, ("id", "instruction", "max_seconds", "produces_facts"), ("id", "instruction", "max_seconds", "produces_facts"))
+    fact_value_types = FACT_VALUE_TYPES_BY_SCHEMA[schema_version]
     produced = []
     for index, key in enumerate(_string_array(value["produces_facts"], path + ".produces_facts")):
-        if key not in FACT_VALUE_TYPES:
-            _fail("{0}.produces_facts[{1}]".format(path, index), "unknown-fact-key", "fact key is not in schema version {0}".format(SCHEMA_VERSION))
+        if key not in fact_value_types:
+            _fail("{0}.produces_facts[{1}]".format(path, index), "unknown-fact-key", "fact key is not in schema version {0}".format(schema_version))
         produced.append(FactKey(key))
     return CheapProbe(
         _string(value["id"], path + ".id"),
@@ -613,29 +626,31 @@ def _parse_card(raw: Any, path: str) -> AttackCard:
         ),
     )
     schema_version = _check_schema_version(value["schema_version"], path + ".schema_version")
+    fact_value_types = FACT_VALUE_TYPES_BY_SCHEMA[schema_version]
     parameter_signature = []
     for index, key in enumerate(_string_array(value["parameter_signature"], path + ".parameter_signature")):
-        if key not in FACT_VALUE_TYPES:
-            _fail("{0}.parameter_signature[{1}]".format(path, index), "unknown-fact-key", "fact key is not in schema version {0}".format(SCHEMA_VERSION))
+        if key not in fact_value_types:
+            _fail("{0}.parameter_signature[{1}]".format(path, index), "unknown-fact-key", "fact key is not in schema version {0}".format(schema_version))
         parameter_signature.append(FactKey(key))
-    signals = tuple(_parse_signal(item, "{0}.signals[{1}]".format(path, index)) for index, item in enumerate(_array(value["signals"], path + ".signals")))
+    signals = tuple(_parse_signal(item, "{0}.signals[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["signals"], path + ".signals")))
     _check_unique([item.id for item in signals], path + ".signals", "duplicate-signal-id")
-    requires = tuple(_parse_rule(item, "{0}.requires[{1}]".format(path, index)) for index, item in enumerate(_array(value["requires"], path + ".requires")))
-    rejects = tuple(_parse_rule(item, "{0}.rejects[{1}]".format(path, index)) for index, item in enumerate(_array(value["rejects"], path + ".rejects")))
-    negative_matches = tuple(_parse_negative_match(item, "{0}.negative_matches[{1}]".format(path, index)) for index, item in enumerate(_array(value["negative_matches"], path + ".negative_matches")))
+    requires = tuple(_parse_rule(item, "{0}.requires[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["requires"], path + ".requires")))
+    rejects = tuple(_parse_rule(item, "{0}.rejects[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["rejects"], path + ".rejects")))
+    negative_matches = tuple(_parse_negative_match(item, "{0}.negative_matches[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["negative_matches"], path + ".negative_matches")))
     _check_unique([item.id for item in requires], path + ".requires", "duplicate-rule-id")
     _check_unique([item.id for item in rejects], path + ".rejects", "duplicate-rule-id")
     _check_unique([item.id for item in negative_matches], path + ".negative_matches", "duplicate-negative-match-id")
-    probes = tuple(_parse_probe(item, "{0}.cheap_probes[{1}]".format(path, index)) for index, item in enumerate(_array(value["cheap_probes"], path + ".cheap_probes")))
+    probes = tuple(_parse_probe(item, "{0}.cheap_probes[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["cheap_probes"], path + ".cheap_probes")))
     procedure = tuple(_parse_procedure_step(item, "{0}.procedure[{1}]".format(path, index)) for index, item in enumerate(_array(value["procedure"], path + ".procedure")))
     citations = tuple(_parse_citation(item, "{0}.citations[{1}]".format(path, index)) for index, item in enumerate(_array(value["citations"], path + ".citations")))
     if not citations:
         _fail(path + ".citations", "missing-citation-identifier", "AttackCards require at least one citation")
-    examples = tuple(_parse_example(item, "{0}.examples[{1}]".format(path, index)) for index, item in enumerate(_array(value["examples"], path + ".examples")))
+    examples = tuple(_parse_example(item, "{0}.examples[{1}]".format(path, index), schema_version) for index, item in enumerate(_array(value["examples"], path + ".examples")))
     if card_id.startswith("paper.") and not examples:
         _fail(path + ".examples", "research-card-missing-pinned-example", "research-tier cards require a pinned example")
     verification = tuple(_parse_verification_step(item, "{0}.verification[{1}]".format(path, index)) for index, item in enumerate(_array(value["verification"], path + ".verification")))
     return AttackCard(
+        schema_version=schema_version,
         id=CardId(card_id),
         version=_integer(value["version"], path + ".version", 1),
         canonical_family_id=_string(value["canonical_family_id"], path + ".canonical_family_id"),
@@ -663,6 +678,11 @@ def parse_catalog(raw: JsonValue) -> Tuple[AttackCard, ...]:
 
     cards = tuple(_parse_card(item, "$[{0}]".format(index)) for index, item in enumerate(_array(raw, "$")))
     _check_unique([str(card.id) for card in cards], "$", "duplicate-card-id")
+    if cards:
+        catalog_version = cards[0].schema_version
+        for index, card in enumerate(cards[1:], 1):
+            if card.schema_version != catalog_version:
+                _fail("$[{0}].schema_version".format(index), "mixed-schema-versions", "catalog cards must use one schema version")
     return cards
 
 

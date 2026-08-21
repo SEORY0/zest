@@ -16,7 +16,7 @@ import stat
 import sys
 from pathlib import Path
 
-from zest_crypto_parse import FACT_VALUE_TYPES
+from zest_crypto_parse import FACT_VALUE_TYPES, SCHEMA_VERSION
 from zest_crypto_source import is_canonical_source_anchor
 
 
@@ -400,7 +400,7 @@ def fingerprint(case_id, paths):
             _extract_python(text, index, observations)
         else:
             _extract_transcript(text, index, observations)
-    return {"schema_version": 1, "case_id": case_id, "inputs": inputs, "facts": _build_facts(inputs, observations), "capabilities": [{"command": command, "available": shutil.which(command) is not None, "version": None} for command in CAPABILITY_COMMANDS], "constraints": {"network": "disabled"}}
+    return {"schema_version": SCHEMA_VERSION, "case_id": case_id, "inputs": inputs, "facts": _build_facts(inputs, observations), "capabilities": [{"command": command, "available": shutil.which(command) is not None, "version": None} for command in CAPABILITY_COMMANDS], "constraints": {"network": "disabled"}}
 
 
 def _error(error):

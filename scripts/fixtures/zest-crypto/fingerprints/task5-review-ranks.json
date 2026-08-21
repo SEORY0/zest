@@ -1,6 +1,6 @@
 {
   "mat347_valid": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "mat347-valid",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
     "facts": [
@@ -14,7 +14,7 @@
     "constraints": {"network": "disabled", "max_seconds": 30, "max_memory_mb": 512, "max_oracle_queries": 670}
   },
   "mat347_unrelated_anchor": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "mat347-unrelated-anchor",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
     "facts": [
@@ -27,7 +27,7 @@
     "constraints": {"network": "disabled", "max_oracle_queries": 670}
   },
   "mat347_standard_ecdsa": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "mat347-standard-ecdsa",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
     "facts": [
@@ -40,7 +40,7 @@
     "constraints": {"network": "disabled", "max_oracle_queries": 670}
   },
   "mat347_independent_lists": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "mat347-independent-lists",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "media_type": "text/x-python"}],
     "facts": [
@@ -54,7 +54,7 @@
     "constraints": {"network": "disabled", "max_oracle_queries": 670}
   },
   "eclcg_valid": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "eclcg-valid",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
@@ -71,7 +71,7 @@
     "constraints": {"network": "disabled", "max_seconds": 3600, "max_memory_mb": 4096}
   },
   "eclcg_same_modulus": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "eclcg-same-modulus",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
@@ -88,7 +88,7 @@
     "constraints": {"network": "disabled"}
   },
   "eclcg_unrelated_anchor": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "eclcg-unrelated-anchor",
     "inputs": [{"id": "source", "path": "inputs/chall.py", "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "media_type": "text/x-python"}],
     "facts": [
@@ -105,7 +105,7 @@
     "constraints": {"network": "disabled"}
   },
   "cbc_insufficient": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "cbc-insufficient",
     "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
     "facts": [
@@ -119,7 +119,7 @@
     "constraints": {"network": "disabled", "max_oracle_queries": 257}
   },
   "cbc_constraint_capped": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "cbc-constraint-capped",
     "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
     "facts": [
@@ -133,7 +133,7 @@
     "constraints": {"network": "disabled", "max_oracle_queries": 257}
   },
   "cbc_sufficient": {
-    "schema_version": 1,
+    "schema_version": 2,
     "case_id": "cbc-sufficient",
     "inputs": [{"id": "transcript", "path": "inputs/oracle.txt", "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "media_type": "text/plain"}],
     "facts": [
