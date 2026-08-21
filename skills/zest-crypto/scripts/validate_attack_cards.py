@@ -43,6 +43,13 @@ def _parse_finite_json_float(value: str) -> float:
     return number
 
 
+def _parse_json_integer(value: str) -> int:
+    try:
+        return int(value)
+    except ValueError as error:
+        raise json.JSONDecodeError("invalid JSON integer", value, 0) from error
+
+
 def main(arguments: Sequence[str]) -> int:
     if len(arguments) != 1:
         return _failure(CatalogIssue("$", "invalid-arguments", "expected one AttackCards JSON path"))
@@ -58,6 +65,7 @@ def main(arguments: Sequence[str]) -> int:
             contents,
             parse_constant=_reject_non_standard_json_constant,
             parse_float=_parse_finite_json_float,
+            parse_int=_parse_json_integer,
         )
     except RecursionError as error:
         return _failure(CatalogIssue("$", "input-too-deep", str(error)))

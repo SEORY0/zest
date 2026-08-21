@@ -15,14 +15,24 @@ const hastadFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fing
 const schemaReference = join(root, 'skills', 'zest-crypto', 'references', 'attack-card-schema.md');
 
 function runValidator(catalogPath) {
+  return runValidatorWith('python3', catalogPath);
+}
+
+function runValidatorWith(interpreter, catalogPath) {
   return new Promise((resolve, reject) => {
-    execFile('python3', [validator, catalogPath], { cwd: root }, (error, stdout, stderr) => {
+    execFile(interpreter, [validator, catalogPath], { cwd: root }, (error, stdout, stderr) => {
       if (error && typeof error.code !== 'number') {
         reject(error);
         return;
       }
       resolve({ code: error ? error.code : 0, stderr, stdout });
     });
+  });
+}
+
+function commandAvailable(command) {
+  return new Promise((resolve) => {
+    execFile(command, ['--version'], (error) => resolve(error === null));
   });
 }
 
@@ -279,6 +289,28 @@ test('validator rejects JSON numeric overflow before AttackCard parsing', async 
     const result = await runValidator(fixturePath);
 
     // Then: it fails at the JSON boundary instead of accepting infinity as a number.
+    assert.equal(result.code, 2);
+    assert.equal(result.stderr, '');
+    assert.deepEqual(JSON.parse(result.stdout), {
+      ok: false,
+      issues: [{ path: '$', code: 'invalid-json' }],
+    });
+  });
+});
+
+test('validator normalizes oversized JSON integers on Python 3.11+', async (t) => {
+  // Given: a JSON integer above Python 3.11's decoder digit limit.
+  if (!(await commandAvailable('python3.11'))) {
+    t.skip('python3.11 is unavailable; this runtime has no JSON integer digit limit');
+    return;
+  }
+  const oversizedInteger = '[' + '9'.repeat(5000) + ']';
+
+  await withTemporaryCatalog('zest-crypto-int-limit-', oversizedInteger, async (fixturePath) => {
+    // When: the supported Python 3.11 runtime decodes the untrusted input.
+    const result = await runValidatorWith('python3.11', fixturePath);
+
+    // Then: decoder conversion failure is a structured input error, not a traceback.
     assert.equal(result.code, 2);
     assert.equal(result.stderr, '');
     assert.deepEqual(JSON.parse(result.stdout), {
