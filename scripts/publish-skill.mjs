@@ -130,8 +130,9 @@ function buildReadme() {
   return `# Zest skills
 
 Agent skills for [Zest](https://github.com/SEORY0/zest) — a local-first data and security
-workbench. Encode, decode, hash, encrypt, decompress and analyse data without anything leaving
-the machine.
+workbench. Core, CLI and browser byte processing stay local by default; \`zest-crypto\` reaches
+public papers or challenge/oracle endpoints only with explicit user or case authorization, never
+automatically.
 
 ## Install
 
@@ -214,7 +215,7 @@ function publish() {
         TARGET,
         '--public',
         '--description',
-        'Agent skills for Zest — a local-first data and security workbench. 103 operations, no network calls.',
+        'Agent skills for Zest — local processing; no automatic access; authorized zest-crypto research.',
       ]);
     }
 

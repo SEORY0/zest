@@ -7,9 +7,11 @@ Chain operations into a recipe the way you would in CyberChef, but with a calmer
 CLI that composes with the rest of your shell, and skills so an agent can use the same 103
 operations instead of writing throwaway scripts.
 
-Nothing opens a network connection. The browser app has no backend; the CLI makes no requests.
-Inputs stay on the device, though real secrets still need env/file discipline so they do not
-leak through process arguments, shell history or agent transcripts.
+Core, browser and CLI byte processing make no network requests. The browser app has no backend,
+and inputs stay on the device by default, though real secrets still need env/file discipline so
+they do not leak through process arguments, shell history or agent transcripts. Agent skills do
+not access the network automatically: `zest-crypto` can reach public papers or challenge/oracle
+endpoints only with explicit user or case authorization.
 
 **[Try it →](https://seory0.github.io/zest/)**
 

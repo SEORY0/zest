@@ -35,8 +35,8 @@ export function SkillPage(): JSX.Element {
         <h1 className="page-title">Give your agent a security workbench.</h1>
         <p className="page-lede">
           The skill teaches an agent to reach for <code>zest</code> instead of writing throwaway Python for every decode,
-          hash and cipher. {operations.length} operations, one binary, no network calls — so an agent can work on a
-          token, a capture or a malware sample without sending any of it anywhere.
+          hash and cipher. {operations.length} operations, one binary, local byte processing by default — so an agent can
+          work on a token, a capture or a malware sample without sending any of it anywhere.
         </p>
 
         <div className="stat-row">
@@ -50,7 +50,7 @@ export function SkillPage(): JSX.Element {
           </div>
           <div>
             <div className="stat-value">0</div>
-            <div className="stat-label">network calls</div>
+            <div className="stat-label">automatic network calls</div>
           </div>
         </div>
       </div>
