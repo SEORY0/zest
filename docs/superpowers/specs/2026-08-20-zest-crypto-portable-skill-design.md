@@ -169,7 +169,9 @@ skills/zest-crypto/
         ├── rsa_hastad.py
         ├── coppersmith_univariate.sage
         ├── ecdsa_nonce_reuse.py
-        └── wagner_generalized_birthday.py
+        ├── wagner_generalized_birthday.py
+        ├── lfsr_known_plaintext.py
+        └── rotor_group_conjugacy.py
 ```
 
 The layout uses progressive disclosure:
@@ -569,7 +571,7 @@ Before synthesizing a solver for a research-tier card, the agent must pass five 
 
 ### 9.1 Exact v1 card inventory
 
-The first catalog contains these 16 cards. Fixture manifests live under `scripts/fixtures/zest-crypto/<fixture>/manifest.json` in the source repository.
+The first catalog contains these 21 cards. Fixture manifests live under `scripts/fixtures/zest-crypto/<fixture>/manifest.json` in the source repository.
 
 | Card ID | Required fact keys | Fast rejection or probe | Fixture | Tool and bundled template | Required citation/source |
 | --- | --- | --- | --- | --- | --- |
@@ -589,6 +591,11 @@ The first catalog contains these 16 cards. Fixture manifests live under `scripts
 | `paper.frost.threshold-signature` | `signature.scheme`, `signature.sample_count`, `construction.paper_ids`, `construction.source_anchors`, `construction.parameter_signature` | validate each share equation; reject ordinary single-party Schnorr routing | `paper-frost` | Python or Sage; no bundled template | IACR ePrint 2020/852 and pinned `law-and-order` source lines |
 | `paper.uov.wrapper-structure` | `signature.scheme`, `construction.paper_ids`, `construction.source_anchors`, `construction.parameter_signature` | toy verifier and rank probe must set `construction.toy_invariant_verified` | `paper-uov-wrapper` | Sage; no bundled template | original UOV family source and pinned `unfairy-ring` variants |
 | `paper.csidh.auxiliary-point-leak` | `construction.canonical_family`, `construction.paper_ids`, `construction.source_anchors`, `construction.parameter_signature` | toy isogeny/order probe must pass; keep mapping `inferred` until it does | `paper-csidh-leak` | Sage; no bundled template | IACR ePrint 2018/383 and pinned `coast` description/source lines |
+| `lattice.subset-sum.query-schedule` | construction-specific query schedule and subset-sum parameters | reject when the schedule does not preserve the required relation | `subset-sum-query-schedule` | Sage or Python; no bundled template | authoritative subset-sum construction source |
+| `stream.lfsr.known-plaintext` | `prng.family`, aligned stream samples, known plaintext | recover recurrence and require keystream replay | `lfstream` | Python; `lfsr_known_plaintext.py` | authoritative LFSR recurrence source |
+| `symmetric.slide.periodic-round` | periodic round structure and chosen inputs | reject when the round period or slid-pair relation fails | `slide-periodic-round` | Python or Sage; no bundled template | authoritative slide-attack source |
+| `oracle.goldwasser-micali.replication` | `oracle.kind`, challenge public key, reproducible response class | require exact replicated ciphertext behavior | `goldwasser-micali-replication` | Python; no bundled template | Goldwasser-Micali source and challenge protocol anchor |
+| `symmetric.rotor.group-conjugacy` | rotor wiring, group action, and known mappings | verify the conjugacy relation on independent mappings | `rotor-cipher` | Python; `rotor_group_conjugacy.py` | authoritative rotor/group-conjugacy source |
 
 A card is accepted only when its preconditions, rejection conditions, negative matches, citation assumptions, and verification method can be stated precisely. Broad entries such as “try lattice” are prohibited.
 
@@ -771,7 +778,7 @@ Version 1 is complete when all of the following are true:
 - `zest-crypto` installs as a standalone portable skill.
 - Its trigger description distinguishes math-heavy crypto from encoding-only CTF work.
 - The core loop produces a case manifest, ranked cards, solver artifact, and proof record.
-- The catalog contains 16 precise, validated AttackCards across the baseline families and paper-derived construction tier.
+- The catalog contains 21 precise, validated AttackCards across the baseline families and paper-derived construction tier.
 - Six bundled solver templates execute on their corresponding fixtures.
 - Ranking is deterministic and explains every top-three result.
 - An unmet hard precondition cannot be overridden by heuristic score.
@@ -783,6 +790,10 @@ Version 1 is complete when all of the following are true:
   - all three runnable fixtures are solved and verified;
   - zero candidates are labeled solved on flag shape alone;
   - reruns produce the same top-three order for unchanged inputs and catalog.
+- Current-year evaluation requires the exact intended AttackCard in the top three for
+  all five pinned 2026 cases: `subset-sum-query-schedule`, `lfstream`,
+  `slide-periodic-round`, `goldwasser-micali-replication`, and `rotor-cipher`.
+  The `lfstream` and `Rotor Cipher` cases must also complete end-to-end proof.
 - Offline mode performs no paper lookup, remote request, install attempt, or persistent-service startup.
 - Online paper research occurs only when `constraints.network` is `allowed` and records the permission state and sources in the case.
 - Missing specialist tools produce a blocked result without attempting to install software.
