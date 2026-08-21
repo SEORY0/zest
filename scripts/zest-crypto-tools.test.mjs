@@ -1416,8 +1416,8 @@ test('fingerprint emits only documented immutable source anchors', async () => {
   }
 });
 
-test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => {
-  // Given: a prefix-continuation decoy plus every supported canonical ePrint form.
+test('fingerprint requires complete paper URL token boundaries', async () => {
+  // Given: embedded URL suffixes, trailing continuations, and canonical delimited paper URLs.
   const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-eprint-'));
   const invalid = join(fixtureDirectory, 'invalid.py');
   const valid = join(fixtureDirectory, 'valid.py');
@@ -1430,14 +1430,20 @@ test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => 
     'exclamation = "https://eprint.iacr.org/2020/852!suffix"',
     'comma = "https://eprint.iacr.org/2020/852,continued"',
     'path = "https://eprint.iacr.org/2020/852/appendix"',
+    'alpha_eprint = "nothttps://eprint.iacr.org/2020/852"',
+    'alpha_doi = "nothttps://doi.org/10.1000/example"',
+    'uri_eprint = "urn:https://eprint.iacr.org/2021/123.pdf"',
+    'uri_doi = "redirect=https://doi.org/10.1001/example"',
   ].join('\n'), 'utf8');
   await writeFile(valid, [
     'bare = "https://eprint.iacr.org/2020/852"',
     'pdf = "https://eprint.iacr.org/2021/123.pdf"',
+    'doi = "https://doi.org/10.1000/example"',
   ].join('\n'), 'utf8');
   await writeFile(prose, [
-    'bare = "See https://eprint.iacr.org/2020/852, then continue."',
+    'bare = "See (https://eprint.iacr.org/2020/852), then continue."',
     'pdf = "Read https://eprint.iacr.org/2021/123.pdf; then continue."',
+    'doi = "Review https://doi.org/10.1000/example, then continue."',
   ].join('\n'), 'utf8');
 
   try {
@@ -1446,13 +1452,13 @@ test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => 
     const validResult = await runFingerprint('valid-eprint', [valid]);
     const proseResult = await runFingerprint('prose-eprint', [prose]);
 
-    // Then: only complete canonical URL forms become exact paper IDs.
+    // Then: only complete canonical URL tokens become exact paper IDs.
     assert.equal(invalidResult.code, 0, invalidResult.stderr);
     assert.equal(JSON.parse(invalidResult.stdout).facts.some(({ key }) => key === 'construction.paper_ids'), false);
     assert.equal(validResult.code, 0, validResult.stderr);
-    assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['eprint:2020/852', 'eprint:2021/123']);
+    assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['doi:10.1000/example', 'eprint:2020/852', 'eprint:2021/123']);
     assert.equal(proseResult.code, 0, proseResult.stderr);
-    assert.deepEqual(fact(JSON.parse(proseResult.stdout), 'construction.paper_ids').value, ['eprint:2020/852', 'eprint:2021/123']);
+    assert.deepEqual(fact(JSON.parse(proseResult.stdout), 'construction.paper_ids').value, ['doi:10.1000/example', 'eprint:2020/852', 'eprint:2021/123']);
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }

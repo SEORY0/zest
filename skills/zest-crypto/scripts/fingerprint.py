@@ -39,6 +39,7 @@ CLUE_FAMILIES = {
     "slide": "symmetric.slide.periodic-round",
 }
 ANCHOR_ASCII = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-/")
+URL_OPENERS = frozenset(("\"", "'", "<", "(", "[", "{"))
 URL_CLOSERS = frozenset(("\"", "'", "<", ">", ")", "]", "}"))
 
 
@@ -247,11 +248,15 @@ def _extract_clues(text, input_index, observations):
 
 
 def _extract_text(text, input_index, observations):
-    paper_matches = [("doi:{0}".format(match.group(1)), _line(text, match.start(1))) for match in DOI_URL.finditer(text)]
-    paper_matches.extend(("eprint:{0}".format(match.group(1)), _line(text, match.start(1))) for match in EPRINT_URL.finditer(text) if _eprint_terminated(text, match.end()))
+    paper_matches = [("doi:{0}".format(match.group(1)), _line(text, match.start(1))) for match in DOI_URL.finditer(text) if _url_started(text, match.start())]
+    paper_matches.extend(("eprint:{0}".format(match.group(1)), _line(text, match.start(1))) for match in EPRINT_URL.finditer(text) if _url_started(text, match.start()) and _eprint_terminated(text, match.end()))
     if paper_matches:
         _add(observations, "construction.paper_ids", sorted(set(value for value, _line_number in paper_matches)), input_index, tuple(line for _value, line in paper_matches))
     _extract_clues(text, input_index, observations)
+
+
+def _url_started(text, start):
+    return start == 0 or text[start - 1].isspace() or text[start - 1] in URL_OPENERS
 
 
 def _eprint_terminated(text, end):
