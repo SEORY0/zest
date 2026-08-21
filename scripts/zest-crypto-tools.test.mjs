@@ -1434,16 +1434,25 @@ test('fingerprint requires complete paper URL token boundaries', async () => {
     'alpha_doi = "nothttps://doi.org/10.1000/example"',
     'uri_eprint = "urn:https://eprint.iacr.org/2021/123.pdf"',
     'uri_doi = "redirect=https://doi.org/10.1001/example"',
+    'paper = "https://doi.org/10.1000/example?download=1"',
+    'doi_fragment = "https://doi.org/10.1000/example#page=1"',
+    'paper = "https://doi.org/10.1000/example@invalid"',
+    'doi_semicolon = "https://doi.org/10.1000/example;download=1"',
+    'doi_bang = "https://doi.org/10.1000/example!suffix"',
   ].join('\n'), 'utf8');
   await writeFile(valid, [
     'bare = "https://eprint.iacr.org/2020/852"',
     'pdf = "https://eprint.iacr.org/2021/123.pdf"',
     'doi = "https://doi.org/10.1000/example"',
+    'parenthesized_doi = "https://doi.org/10.1000/example(foo)"',
   ].join('\n'), 'utf8');
   await writeFile(prose, [
     'bare = "See (https://eprint.iacr.org/2020/852), then continue."',
     'pdf = "Read https://eprint.iacr.org/2021/123.pdf; then continue."',
-    'doi = "Review https://doi.org/10.1000/example, then continue."',
+    'doi_comma = "Review https://doi.org/10.1000/example, then continue."',
+    'paper = "See (https://doi.org/10.1000/example), then continue."',
+    'paper = "See https://doi.org/10.1000/example."',
+    'doi_balanced = "See (https://doi.org/10.1003/example(foo)), then continue."',
   ].join('\n'), 'utf8');
 
   try {
@@ -1456,9 +1465,14 @@ test('fingerprint requires complete paper URL token boundaries', async () => {
     assert.equal(invalidResult.code, 0, invalidResult.stderr);
     assert.equal(JSON.parse(invalidResult.stdout).facts.some(({ key }) => key === 'construction.paper_ids'), false);
     assert.equal(validResult.code, 0, validResult.stderr);
-    assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['doi:10.1000/example', 'eprint:2020/852', 'eprint:2021/123']);
+    assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['doi:10.1000/example', 'doi:10.1000/example(foo)', 'eprint:2020/852', 'eprint:2021/123']);
     assert.equal(proseResult.code, 0, proseResult.stderr);
-    assert.deepEqual(fact(JSON.parse(proseResult.stdout), 'construction.paper_ids').value, ['doi:10.1000/example', 'eprint:2020/852', 'eprint:2021/123']);
+    assert.deepEqual(fact(JSON.parse(proseResult.stdout), 'construction.paper_ids').value, [
+      'doi:10.1000/example',
+      'doi:10.1003/example(foo)',
+      'eprint:2020/852',
+      'eprint:2021/123',
+    ]);
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }

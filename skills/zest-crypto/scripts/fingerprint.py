@@ -21,7 +21,8 @@ from zest_crypto_parse import FACT_VALUE_TYPES
 
 
 CAPABILITY_COMMANDS = ("python3", "sage", "z3")
-DOI_URL = re.compile(r"https://(?:dx\.)?doi\.org/(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.IGNORECASE)
+DOI_URL = re.compile(r"https://(?:dx\.)?doi\.org/", re.IGNORECASE)
+DOI_IDENTIFIER = re.compile(r"10\.\d{4,9}/[-._()/:A-Za-z0-9]+", re.IGNORECASE)
 EPRINT_URL = re.compile(r"https://eprint\.iacr\.org/(\d{4}/\d+)(?:\.pdf)?", re.IGNORECASE)
 HEX_INTEGER = re.compile(r"^\s*(n|modulus|e|public_exponent|c|ciphertext)\s*=\s*(0x[0-9a-fA-F]+)\s*$", re.MULTILINE)
 CLUE_TOKEN = re.compile(r"(?<![A-Za-z0-9_])(small_roots|LLL|EllipticCurve|MT19937|LFSR|Goldwasser|FROST|UOV|CSIDH|repeated-round|slide)(?![A-Za-z0-9_])")
@@ -41,6 +42,7 @@ CLUE_FAMILIES = {
 ANCHOR_ASCII = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-/")
 URL_OPENERS = frozenset(("\"", "'", "<", "(", "[", "{"))
 URL_CLOSERS = frozenset(("\"", "'", "<", ">", ")", "]", "}"))
+DOI_TOKEN_STOPPERS = frozenset(("\"", "'", "<", ">", "[", "]", "{", "}"))
 
 
 class InputError(Exception):
@@ -248,7 +250,11 @@ def _extract_clues(text, input_index, observations):
 
 
 def _extract_text(text, input_index, observations):
-    paper_matches = [("doi:{0}".format(match.group(1)), _line(text, match.start(1))) for match in DOI_URL.finditer(text) if _url_started(text, match.start())]
+    paper_matches = []
+    for match in DOI_URL.finditer(text):
+        identifier = _doi_identifier(text, match) if _url_started(text, match.start()) else None
+        if identifier is not None:
+            paper_matches.append(("doi:{0}".format(identifier), _line(text, match.end())))
     paper_matches.extend(("eprint:{0}".format(match.group(1)), _line(text, match.start(1))) for match in EPRINT_URL.finditer(text) if _url_started(text, match.start()) and _eprint_terminated(text, match.end()))
     if paper_matches:
         _add(observations, "construction.paper_ids", sorted(set(value for value, _line_number in paper_matches)), input_index, tuple(line for _value, line in paper_matches))
@@ -257,6 +263,36 @@ def _extract_text(text, input_index, observations):
 
 def _url_started(text, start):
     return start == 0 or text[start - 1].isspace() or text[start - 1] in URL_OPENERS
+
+
+def _doi_identifier(text, match):
+    end = match.end()
+    while end < len(text) and not text[end].isspace() and text[end] not in DOI_TOKEN_STOPPERS:
+        end += 1
+    candidate = text[match.end():end]
+    preceding = text[match.start() - 1] if match.start() else ""
+    prose_context = preceding.isspace() or preceding == "("
+    if candidate.endswith((",", ".")):
+        if not prose_context:
+            return None
+        candidate = candidate[:-1]
+    if candidate.endswith(")") and preceding == "(" and _doi_parentheses_balanced(candidate[:-1]):
+        candidate = candidate[:-1]
+    if DOI_IDENTIFIER.fullmatch(candidate) is None or not _doi_parentheses_balanced(candidate):
+        return None
+    return candidate
+
+
+def _doi_parentheses_balanced(identifier):
+    depth = 0
+    for character in identifier:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            if depth == 0:
+                return False
+            depth -= 1
+    return depth == 0
 
 
 def _eprint_terminated(text, end):
