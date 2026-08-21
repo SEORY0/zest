@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "case_id": "rsa-hastad-4f2a91c0",
+  "inputs": [
+    {
+      "id": "challenge.py",
+      "path": "inputs/challenge.py",
+      "sha256": "4f2a91c0b00a0c8d9e42d9a022d4d2e1f23456789abcdef0123456789abcdef0",
+      "media_type": "text/x-python"
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact-moduli",
+      "key": "rsa.moduli",
+      "value": [101, 103, 107],
+      "value_type": "integer_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "challenge.py",
+        "locator": "lines 3-5"
+      }
+    },
+    {
+      "id": "fact-exponent",
+      "key": "rsa.public_exponent",
+      "value": 3,
+      "value_type": "integer",
+      "status": "observed",
+      "evidence": {
+        "input_id": "challenge.py",
+        "locator": "line 7"
+      }
+    },
+    {
+      "id": "fact-ciphertexts",
+      "key": "rsa.ciphertexts",
+      "value": [1, 2, 3],
+      "value_type": "integer_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "challenge.py",
+        "locator": "lines 9-11"
+      }
+    },
+    {
+      "id": "fact-same-plaintext",
+      "key": "rsa.same_plaintext",
+      "value": true,
+      "value_type": "boolean",
+      "status": "observed",
+      "evidence": {
+        "input_id": "challenge.py",
+        "locator": "line 13"
+      }
+    },
+    {
+      "id": "fact-coprime",
+      "key": "rsa.moduli_pairwise_coprime",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["fact-moduli"]
+      }
+    }
+  ],
+  "capabilities": [],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 0
+  }
+}
