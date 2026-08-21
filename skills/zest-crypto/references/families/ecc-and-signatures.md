@@ -30,7 +30,7 @@ keeps repeated, partial, and algebraically related nonce families separate.
 - **Primary citation:** NIST FIPS 186-5, *Digital Signature Standard*, DOI
   `10.6028/NIST.FIPS.186-5`, Section 6.4, 2023. The standard supplies the ECDSA
   equations and per-message-secret requirements; it is not cited as an attack paper.
-- **Local package example:** `assets/solver-templates/ecdsa_nonce_reuse.py:L1-L298`.
+- **Local package example:** `assets/solver-templates/ecdsa_nonce_reuse.py:L1-L297`.
 
 Related routes are documented under [lattices and small roots](lattices-and-small-roots.md)
 and [paper-derived constructions](paper-derived-constructions.md).

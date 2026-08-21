@@ -5,14 +5,11 @@
 # ///
 """Recover a reused ECDSA nonce on proven small or audited secp256k1/P-256 domains."""
 
-from __future__ import annotations
-
 import json
 import math
 import os
 import stat
 import sys
-from pathlib import Path
 
 
 MAX_INPUT_BYTES = 1_000_000
@@ -20,10 +17,15 @@ MAX_INTEGER_BITS = 1024
 MAX_JSON_DEPTH = 32
 MAX_JSON_INTEGER_DIGITS = 4096
 # Canonical (p, a, b, gx, gy, order) tuples; other large domains are unsupported.
-KNOWN_STANDARD_DOMAINS = frozenset(((0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F, 0, 7, 55066263022277343669578718895168534326250603453777594175500187360389116729240, 32670510020758816978083085130507043184471273380659243275938904335757337482424, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141), (115792089210356248762697446949407573530086143415290314195533631308867097853951, 115792089210356248762697446949407573530086143415290314195533631308867097853948, 41058363725152142129326129780047268409114441015993725554835256314039467401291, 48439561293906451759052585252797914202762949526041747995844080717082404635286, 36134250956749795798585127919587881956611106672985015071877198253568414405109, 115792089210356248762697446949407573529996955224135760342422259061068512044369)))
+KNOWN_STANDARD_DOMAINS = frozenset((
+    # NIST P-256
+    (0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff, 0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc, 0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b, 0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296, 0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5, 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551),
+    # secp256k1
+    (0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f, 0, 7, 0x79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798, 0x483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8, 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141)))
+
+
 class SolverError(Exception):
-    def __init__(self, code):
-        self.code = code
+    pass
 
 
 def _emit(document, exit_code=0):
@@ -51,11 +53,9 @@ def _parse_json_float(token):
 
 
 def _unique_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError
-        result[key] = value
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError
     return result
 
 
@@ -65,30 +65,25 @@ def _check_depth(document):
         value, depth = pending.pop()
         if depth > MAX_JSON_DEPTH:
             raise SolverError("invalid-json")
-        if type(value) is dict:
-            pending.extend((item, depth + 1) for item in value.values())
-        elif type(value) is list:
-            pending.extend((item, depth + 1) for item in value)
+        if type(value) not in (dict, list):
+            continue
+        children = value.values() if type(value) is dict else value
+        pending.extend((item, depth + 1) for item in children)
+
+
+def _open_regular(path, flags):
+    extra_flags = getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    return os.open(path, flags | extra_flags)
 
 
 def _read_regular(path):
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = -1
     try:
-        descriptor = os.open(path, flags)
-        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
-            raise SolverError("input-unreadable")
-        handle = os.fdopen(descriptor, "rb")
-        descriptor = -1
-        with handle:
+        with open(path, "rb", opener=_open_regular) as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise SolverError("input-unreadable")
             content = handle.read(MAX_INPUT_BYTES + 1)
-    except SolverError:
-        raise
     except (OSError, MemoryError):
         raise SolverError("input-unreadable")
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
     if len(content) > MAX_INPUT_BYTES:
         raise SolverError("input-too-large")
     try:
@@ -120,8 +115,6 @@ def _integer(document, key, minimum=0):
 
 
 def _is_prime_64(value):
-    if value < 2:
-        return False
     for divisor in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
         if value % divisor == 0:
             return value == divisor
@@ -131,11 +124,8 @@ def _is_prime_64(value):
         odd_part //= 2
         twos += 1
     for base in (2, 325, 9375, 28178, 450775, 9780504, 1795265022):
-        reduced_base = base % value
-        if reduced_base == 0:
-            continue
-        witness = pow(reduced_base, odd_part, value)
-        if witness in (1, value - 1):
+        witness = pow(base, odd_part, value)
+        if witness in (0, 1, value - 1):
             continue
         for _round in range(twos - 1):
             witness = witness * witness % value
@@ -185,26 +175,27 @@ def _point_add(left, right, curve):
 def _scalar_multiply(scalar, point, curve):
     result = None
     addend = point
-    while scalar:
-        if scalar & 1:
+    remaining_scalar = scalar
+    while remaining_scalar:
+        if remaining_scalar & 1:
             result = _point_add(result, addend, curve)
         addend = _point_add(addend, addend, curve)
-        scalar >>= 1
+        remaining_scalar >>= 1
     return result
 
 
 def _parse_signature(raw, order):
     r = _integer(raw, "r", 1)
     s = _integer(raw, "s", 1)
-    z = _integer(raw, "z", 0)
     if r >= order or s >= order:
         raise SolverError("invalid-input")
-    return r, s, z % order
+    return r, s, _integer(raw, "z", 0) % order
 
 
 def _candidate_proof(signatures, nonce, second_nonce_sign, private_scalar, generator, public_key, curve, order):
-    invalid_scalars = not (0 < nonce < order and 0 < private_scalar < order)
-    if invalid_scalars or _scalar_multiply(private_scalar, generator, curve) != public_key:
+    if not (0 < nonce < order and 0 < private_scalar < order):
+        return None
+    if _scalar_multiply(private_scalar, generator, curve) != public_key:
         return None
     nonce_signs = (1, second_nonce_sign)
     nonce_points = []
@@ -214,9 +205,9 @@ def _candidate_proof(signatures, nonce, second_nonce_sign, private_scalar, gener
         inverse_s = _inverse(s, order, "non-invertible-signature")
         generator_scalar = z * inverse_s % order
         public_scalar = r * inverse_s % order
-        verifier_point = _point_add(
-            _scalar_multiply(generator_scalar, generator, curve), _scalar_multiply(public_scalar, public_key, curve), curve
-        )
+        generator_contribution = _scalar_multiply(generator_scalar, generator, curve)
+        public_contribution = _scalar_multiply(public_scalar, public_key, curve)
+        verifier_point = _point_add(generator_contribution, public_contribution, curve)
         if (nonce_point is None or nonce_point[0] % order != r
                 or (s * signature_nonce - z - r * private_scalar) % order != 0
                 or verifier_point != nonce_point):
@@ -227,19 +218,24 @@ def _candidate_proof(signatures, nonce, second_nonce_sign, private_scalar, gener
     if nonce_points[1] != expected_second_point:
         return None
     return {
-        "nonce_points_verified": len(nonce_points), "nonce_relation_matches": True,
-        "nonce_signs": nonce_signs, "public_key_matches": True, "signatures_verified": len(signatures),
+        "nonce_points_verified": len(nonce_points),
+        "nonce_relation_matches": True,
+        "nonce_signs": nonce_signs,
+        "public_key_matches": True,
+        "signatures_verified": len(signatures),
     }
 
 
 def _solve(document):
     curve_document = document.get("curve")
     p = _integer(curve_document, "p", 5)
-    curve = (p, _integer(curve_document, "a") % p, _integer(curve_document, "b") % p)
+    raw_a = _integer(curve_document, "a")
+    raw_b = _integer(curve_document, "b")
+    curve = (p, raw_a % p, raw_b % p)
     generator = (_integer(curve_document, "gx"), _integer(curve_document, "gy"))
     order = _integer(document, "order", 3)
     if p.bit_length() > 64 or order.bit_length() > 64:
-        if (*curve, *generator, order) not in KNOWN_STANDARD_DOMAINS:
+        if (p, raw_a, raw_b, *generator, order) not in KNOWN_STANDARD_DOMAINS:
             raise SolverError("unsupported-domain")
     else:
         for value, code in ((p, "invalid-field"), (order, "invalid-order")):
@@ -252,7 +248,7 @@ def _solve(document):
     if type(raw_signatures) is not list or len(raw_signatures) != 2:
         raise SolverError("invalid-input")
     signatures = tuple(_parse_signature(raw, order) for raw in raw_signatures)
-    if generator is None or public_key is None or not _on_curve(generator, curve) or not _on_curve(public_key, curve):
+    if not _on_curve(generator, curve) or not _on_curve(public_key, curve):
         raise SolverError("invalid-curve")
     if _scalar_multiply(order, generator, curve) is not None:
         raise SolverError("invalid-curve")
@@ -279,8 +275,12 @@ def _solve(document):
         raise SolverError("proof-mismatch")
     nonce, private_scalar, nonce_relation, proof = candidates[0]
     return {
-        "construction": "ecdsa-reused-nonce", "k": nonce, "nonce_relation": nonce_relation,
-        "private_scalar": private_scalar, "proof": proof, "verified": True,
+        "construction": "ecdsa-reused-nonce",
+        "k": nonce,
+        "nonce_relation": nonce_relation,
+        "private_scalar": private_scalar,
+        "proof": proof,
+        "verified": True,
     }
 
 
@@ -288,10 +288,9 @@ def main(arguments):
     if len(arguments) != 1:
         return _failure("invalid-arguments")
     try:
-        result = _solve(_load(Path(arguments[0])))
+        return _emit(_solve(_load(arguments[0])))
     except SolverError as error:
-        return _failure(error.code)
-    return _emit(result)
+        return _failure(str(error))
 
 
 if __name__ == "__main__":

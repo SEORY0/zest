@@ -94,14 +94,41 @@ test('ECDSA skips a noninvertible same-nonce denominator and proves the opposite
   );
 });
 
-test('ECDSA copied template stays within the 250 pure-line portability gate', async () => {
+test('ECDSA copied template keeps review margin below the pure-line portability gate', async () => {
   // Given: the self-contained solver source as counted by the mandatory programming checker.
   const source = await readFile(join(templates, 'ecdsa_nonce_reuse.py'), 'utf8');
 
   // When: blank and comment-only lines are excluded from its portable implementation size.
   const pureLines = source.split(/\r?\n/).filter((line) => line.trim() && !line.trimStart().startsWith('#'));
 
-  // Then: the copied template remains reviewable without a SIZE_OK escape hatch.
+  // Then: the copied template has review margin and no SIZE_OK escape hatch.
   assert.equal(source.includes('noqa: SIZE_OK'), false);
-  assert.equal(pureLines.length <= 250, true, `ECDSA template has ${pureLines.length} pure lines`);
+  assert.equal(pureLines.length <= 245, true, `ECDSA template has ${pureLines.length} pure lines`);
+});
+
+test('ECDSA copied template does not reassign parameters or pack statements with semicolons', async () => {
+  // Given: the self-contained solver source and an AST/token probe that checks readability boundaries.
+  const path = join(templates, 'ecdsa_nonce_reuse.py');
+  const scanner = [
+    'import ast, io, json, sys, tokenize',
+    "source = open(sys.argv[1], encoding='utf-8').read()",
+    'tree = ast.parse(source)',
+    'reassigned = []',
+    'for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):',
+    '  parameters = {argument.arg for argument in function.args.posonlyargs + function.args.args + function.args.kwonlyargs}',
+    '  if function.args.vararg is not None: parameters.add(function.args.vararg.arg)',
+    '  if function.args.kwarg is not None: parameters.add(function.args.kwarg.arg)',
+    '  for node in ast.walk(function):',
+    '    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in parameters:',
+    '      reassigned.append([function.name, node.id, node.lineno])',
+    "semicolons = [token.start[0] for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.OP and token.string == ';']",
+    "print(json.dumps({'parameter_reassignments': sorted(reassigned), 'semicolon_lines': semicolons}, sort_keys=True))",
+  ].join('\n');
+
+  // When: Python parses assignments and lexical statement separators.
+  const result = await run(python, ['-c', scanner, path]);
+
+  // Then: parameters remain inputs and each statement stays independently reviewable.
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { parameter_reassignments: [], semicolon_lines: [] });
 });

@@ -91,6 +91,18 @@ async function inspectCatalog(cards) {
   }
 }
 
+async function inspectSchemaPolicy() {
+  const source = [
+    'import json, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'from zest_crypto_parse import CANONICAL_PROVENANCE_SCHEMA_VERSIONS, READ_ONLY_SCHEMA_VERSIONS, SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS',
+    "print(json.dumps({'canonical_provenance': sorted(CANONICAL_PROVENANCE_SCHEMA_VERSIONS), 'current': SCHEMA_VERSION, 'read_only': sorted(READ_ONLY_SCHEMA_VERSIONS), 'supported': sorted(SUPPORTED_SCHEMA_VERSIONS)}))",
+  ].join('\n');
+  const result = await runPython(source, []);
+  assert.equal(result.code, 0, result.stderr);
+  return JSON.parse(result.stdout);
+}
+
 function fingerprintDocument(schemaVersion, key = 'rsa.public_exponent', value = 3, valueType = 'integer') {
   return {
     schema_version: schemaVersion,
@@ -130,9 +142,9 @@ async function parseFingerprintDocument(document) {
   }
 }
 
-async function parseFingerprint(anchor) {
+async function parseFingerprint(anchor, schemaVersion = 2) {
   const document = {
-    schema_version: 2,
+    schema_version: schemaVersion,
     case_id: 'source-anchor-boundary',
     inputs: [{ id: 'source', path: 'inputs/source.py', sha256: '0'.repeat(64), media_type: 'text/x-python' }],
     facts: [{
@@ -246,7 +258,7 @@ test('catalog rejects repository URLs whose raw HTTPS prefix is not canonical', 
   }
 });
 
-test('approved v1 card migrates to a remote typed example and round-trips as v1', async () => {
+test('approved canonical v1 card migrates to a remote typed example and round-trips without rewriting', async () => {
   const card = await approvedV1Card();
   assert.equal(
     createHash('sha256').update(JSON.stringify([card])).digest('hex'),
@@ -260,6 +272,43 @@ test('approved v1 card migrates to a remote typed example and round-trips as v1'
     source_kinds: ['remote'],
     document: [card],
   });
+});
+
+test('v1 is read-only and retains canonical provenance safety instead of the historical unsafe grammar', async () => {
+  // Given: the deprecated schema and values accepted by the historical prefix-only v1 parser.
+  const unsafeCards = [
+    ['citation query', (card) => { card.citations[0].url += '?download=1'; },
+      { ok: false, code: 'invalid-citation-url', path: '$[0].citations[0].url' }],
+    ['citation userinfo', (card) => { card.citations[0].url = 'https://user@example.com/paper.pdf'; },
+      { ok: false, code: 'invalid-citation-url', path: '$[0].citations[0].url' }],
+    ['citation raw space', (card) => { card.citations[0].url = 'https://example.com/raw paper.pdf'; },
+      { ok: false, code: 'invalid-citation-url', path: '$[0].citations[0].url' }],
+    ['repository query', (card) => { card.examples[0].repo_url += '?ref=main'; },
+      { ok: false, code: 'invalid-repository-url', path: '$[0].examples[0].repo_url' }],
+    ['repository fragment', (card) => { card.examples[0].repo_url += '#main'; },
+      { ok: false, code: 'invalid-repository-url', path: '$[0].examples[0].repo_url' }],
+    ['repository userinfo', (card) => { card.examples[0].repo_url = 'https://user@github.com/example/example'; },
+      { ok: false, code: 'invalid-repository-url', path: '$[0].examples[0].repo_url' }],
+    ['free-form source lines', (card) => { card.examples[0].source_lines = 'complete source'; },
+      { ok: false, code: 'invalid-source-lines', path: '$[0].examples[0].source_lines' }],
+  ];
+
+  // When: policy and each historical mutation cross the current v1 boundary.
+  const policy = await inspectSchemaPolicy();
+
+  // Then: v1 stays readable but read-only, and every unsafe value has a stable rejection.
+  assert.deepEqual(policy, {
+    canonical_provenance: [1, 2], current: 2, read_only: [1], supported: [1, 2],
+  });
+  for (const [name, mutate, expected] of unsafeCards) {
+    const card = await approvedV1Card();
+    mutate(card);
+    assert.deepEqual(await parseCatalog([card]), expected, name);
+  }
+  assert.deepEqual(
+    await parseFingerprint('arbitrary-anchor', 1),
+    { ok: false, code: 'invalid-source-anchor', path: '$.facts[0].value[0]' },
+  );
 });
 
 test('v2 card retains the explicit remote example shape on round-trip', async () => {

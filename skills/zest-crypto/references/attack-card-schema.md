@@ -2,8 +2,24 @@
 
 The catalog and fingerprint formats are versioned JSON boundaries. Versions
 `1` and `2` are accepted; version `2` is current and is emitted by new
-fingerprints and the shipped catalog. Version `1` remains readable as the exact
-original contract. Decode JSON once at the command boundary, then pass the
+fingerprints and the shipped catalog. Version `1` is deprecated and read-only:
+its structural shape and original 36 fact keys remain readable only when every
+provenance value also satisfies the current canonical URL, source-range, and
+source-anchor safety rules. This is an intentional security tightening. Query,
+userinfo, and raw-space URLs, free-form source ranges, and arbitrary source
+anchors accepted by the historical v1 implementation are rejected with stable
+validation codes. New or migrated documents should use v2.
+
+The parser never falls back from v1 to v2 and never repairs an unsafe value.
+For an accepted canonical v1 catalog, typed parsing followed by the version-
+aware catalog serializer preserves decoded card values and the v1 structural
+shape, including omission of `source_kind`. Preservation of original whitespace
+or object-key order is not promised. Typed fingerprint serialization may
+materialize documented constraint defaults, so no raw fingerprint round trip is
+promised. Rank-report digests are stable SHA-256 hashes of each exact decoded
+input document under sorted compact JSON encoding; they are never digests of a
+typed reserialization. Rejected historical inputs produce neither a round trip
+nor a rank digest. Decode JSON once at the command boundary, then pass the
 resulting JSON value to `parse_fingerprint` or `parse_catalog`; never place
 serialized JSON inside a fact or card field. Any other version fails with
 `unknown-schema-version`.
@@ -128,7 +144,7 @@ catalog. `FactIndex` maps each fact key to one fact, so a duplicate key is
 rejected instead of silently selecting an order-dependent value or evidence
 record.
 
-Every `construction.source_anchors` element uses the canonical form
+In both schema versions, every `construction.source_anchors` element uses the canonical form
 `host/owner/repo@40-lowercase-hex-sha/path:Lx-Ly`. The host is lowercase, source
 paths are normalized and percent-encode spaces canonically, line numbers are
 positive without leading zeroes, and traversal or encoded slash/backslash
@@ -195,12 +211,13 @@ positive `year`, `section`, non-empty string-array `assumptions`, and
 `verified_on`. Canonical HTTPS strings have no leading or trailing whitespace
 and begin with the exact lowercase bytes `https://` before URL parsing.
 
-The v1 pinned-example object has `challenge_id`, `event`, positive `year`,
+The deprecated, read-only v1 pinned-example object has `challenge_id`, `event`, positive `year`,
 canonical HTTPS `repo_url`, a 40-lowercase-hex `repo_sha`, normalized relative
 `source_path`, one inclusive `source_lines` span in canonical `Lx-Ly` form, and
 `inference_level` (`direct` or `inferred`). It is remote-only and does not have
 `source_kind`. Parsing v1 creates a typed example with `source_kind=remote`,
-while serialization restores the original v1 wire shape and declared version.
+while version-aware serialization restores the accepted v1 structural shape
+and declared version. It does not canonicalize or otherwise rewrite values.
 
 Version 2 adds mandatory `source_kind` and the `variant` inference level. A
 `remote` v2 example requires the same canonical repository URL and commit SHA.
@@ -321,11 +338,12 @@ The following complete card is valid JSON and parses with `parse_catalog`:
 The ranker accepts a catalog only when every card declares the same schema
 version. A mixed catalog fails at the first differing card with
 `mixed-schema-versions`. The fingerprint version must then equal the catalog
-version; a mismatch fails with `schema-version-mismatch`. Compatible v1/v1 and
+version; a mismatch fails with `schema-version-mismatch`. Compatible canonical v1/v1 and
 v2/v2 inputs produce a report carrying that declared version. The CLI digests
 the exact decoded fingerprint and catalog JSON inputs, so the internal v1
 example migration never rewrites either digest. The version-aware library
-serializer restores the corresponding v1 or v2 wire shape.
+serializer restores the corresponding accepted v1 or v2 structural shape;
+this does not promise byte-for-byte preservation of source JSON formatting.
 
 The ranker emits a versioned report with those SHA-256 digests plus `eligible`,
 `blocked`, and `rejected` arrays. An eligible result includes `card_id`, signed integer `score`,

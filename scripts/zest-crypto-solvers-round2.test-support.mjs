@@ -82,6 +82,19 @@ test('ECDSA rejects a mutated large standard domain outside the audited tuple al
   assertFailure(result, 'unsupported-domain');
 });
 
+for (const coefficient of ['a', 'b']) {
+  test(`ECDSA rejects a P-256 ${coefficient}+p coefficient before canonical-domain normalization`, async () => {
+    // Given: an otherwise valid P-256 proof with one congruent but noncanonical coefficient.
+    const fixture = `ecdsa-p256-noncanonical-${coefficient}.json`;
+
+    // When: the exact raw large-domain tuple reaches the allowlist boundary.
+    const result = await run(python, [join(templates, 'ecdsa_nonce_reuse.py'), join(fixtures, fixture)]);
+
+    // Then: field equivalence cannot bypass the canonical input-domain contract.
+    assertFailure(result, 'unsupported-domain');
+  });
+}
+
 test('Sage availability probing treats a stuck executable as unavailable within a bounded timeout', async () => {
   // Given: a PATH-leading Sage executable that never returns.
   const temporary = await mkdtemp(join(tmpdir(), 'zest-crypto-sage-probe-'));

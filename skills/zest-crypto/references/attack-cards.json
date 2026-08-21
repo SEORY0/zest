@@ -248,7 +248,7 @@
       {"kind": "standard", "paper_id": "doi:10.6028/NIST.FIPS.186-5", "title": "Digital Signature Standard (DSS)", "url": "https://doi.org/10.6028/NIST.FIPS.186-5", "year": 2023, "section": "Section 6.4 ECDSA signature generation and verification", "assumptions": ["Both signatures are valid ECDSA signatures in one prime-order subgroup, use the exact message representatives, and their nonce points are equal or exact inverses with the same r."], "verified_on": "2026-08-21"}
     ],
     "examples": [
-      {"challenge_id": "zest-ecdsa-reuse-template", "event": "Zest crypto package", "year": 2026, "source_kind": "local", "repo_url": null, "repo_sha": null, "source_path": "assets/solver-templates/ecdsa_nonce_reuse.py", "source_lines": "L1-L298", "inference_level": "direct"}
+      {"challenge_id": "zest-ecdsa-reuse-template", "event": "Zest crypto package", "year": 2026, "source_kind": "local", "repo_url": null, "repo_sha": null, "source_path": "assets/solver-templates/ecdsa_nonce_reuse.py", "source_lines": "L1-L297", "inference_level": "direct"}
     ],
     "verification": [
       {"kind": "equation", "instruction": "Verify dG equals the public key; both original public ECDSA verification equations pass; each signed nonce scalar satisfies its private signature equation and reproduces the exact verifier nonce point; and the two nonce points are equal or exact inverses as reported."}
