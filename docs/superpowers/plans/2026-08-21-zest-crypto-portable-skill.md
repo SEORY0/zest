@@ -640,7 +640,7 @@ Do not copy official solution directories into the blind evaluation workspace.
 
 - [ ] **Step 2: Generate and lock routing fixtures**
 
-Fingerprint the five challenge cases and their pinned source paths named in Task 5. The pinned BSidesSF revision has no `tokencrypt/distfiles/tokencrypt.py`; its service and implementation are the two `tokencrypt/challenge/src/` files above. Add only normalized public facts, repository SHA, source path, and expected card ID to repository fixtures. Do not commit challenge files, flags, live endpoints, or official solver code.
+Fingerprint the five challenge cases and their pinned source paths named in Task 5. The pinned `tokencrypt/distfiles/tokencrypt.py` entry is only a symlink to `../challenge/src/tokencrypt.py` and omits the service surface, so use both `tokencrypt/challenge/src/tc_demo.py` and `tokencrypt/challenge/src/tokencrypt.py`. Add only normalized public facts, repository SHA, source path, and expected card ID to repository fixtures. Do not commit challenge files, flags, live endpoints, or official solver code.
 
 Add tests requiring the exact intended card in top three for all five and top one for at least four.
 

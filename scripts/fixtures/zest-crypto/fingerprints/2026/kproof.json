@@ -16,7 +16,7 @@
     },
     {
       "id": "capture",
-      "path": "inputs/kproof/distfiles/flag.pcap",
+      "path": "inputs/kproof/challenge/flag.pcap",
       "sha256": "c5d20b04c5f3cc90b076d5906a1d5d38d6d67f508bb885ae4cebe60c68b57f5f",
       "media_type": "application/vnd.tcpdump.pcap"
     }
