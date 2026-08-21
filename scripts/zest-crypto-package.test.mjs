@@ -25,6 +25,12 @@ function normalizeReferenceLabel(label) {
   return label.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function isEscaped(characters, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; characters[cursor] === '\\'; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
 function maskCode(contents) {
   const characters = contents.split('');
   let fence;
@@ -50,13 +56,13 @@ function maskCode(contents) {
   }
 
   for (let start = 0; start < characters.length; start += 1) {
-    if (characters[start] !== '`') continue;
+    if (characters[start] !== '`' || isEscaped(characters, start)) continue;
     let openingEnd = start;
     while (characters[openingEnd] === '`') openingEnd += 1;
     const length = openingEnd - start;
 
     for (let end = openingEnd; end < characters.length; end += 1) {
-      if (characters[end] !== '`') continue;
+      if (characters[end] !== '`' || isEscaped(characters, end)) continue;
       let closingEnd = end;
       while (characters[closingEnd] === '`') closingEnd += 1;
       if (closingEnd - end !== length) {
@@ -194,6 +200,37 @@ test('zest-crypto ignores code literals while resolving shortcut references', as
 
     // Then: it ignores code data and accepts the defined shortcut reference.
     await assert.doesNotReject(check);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects links between escaped backticks', async () => {
+  // Given: genuine code spans and a copied package document with escaped backticks.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(
+    join(skillDirectory, 'code.md'),
+    [
+      '`[Ignored inline link](../outside.md)`',
+      '\\\\`[Even parity code](../outside.md)`',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  try {
+    // When: only genuine inline code is present.
+    await assert.doesNotReject(assertLocalMarkdownLinks(skillDirectory));
+    await writeFile(
+      join(skillDirectory, 'escaped.md'),
+      '\\`[Escaping link](../outside.md)\\`\n',
+      'utf8',
+    );
+
+    // Then: odd-parity escaped backticks leave the escaping link active.
+    await assert.rejects(assertLocalMarkdownLinks(skillDirectory), /escapes the standalone skill/);
   } finally {
     await rm(fixtureRoot, { force: true, recursive: true });
   }
