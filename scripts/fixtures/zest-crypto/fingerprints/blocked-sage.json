@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "case_id": "blocked-sage-7c3d1f4a",
+  "inputs": [
+    {
+      "id": "challenge.sage",
+      "path": "inputs/challenge.sage",
+      "sha256": "7c3d1f4a00aa11bb22cc33dd44ee55ff66778899aabbccddeeff001122334455",
+      "media_type": "text/x-python"
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact-polynomial",
+      "key": "lattice.polynomial",
+      "value": "x^2 + 1",
+      "value_type": "string",
+      "status": "observed",
+      "evidence": {
+        "input_id": "challenge.sage",
+        "locator": "line 4"
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "sage",
+      "available": false,
+      "version": null
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 30,
+    "max_memory_mb": 1024,
+    "max_oracle_queries": 0
+  }
+}

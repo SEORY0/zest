@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,9 +10,12 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const validator = join(root, 'skills', 'zest-crypto', 'scripts', 'validate_attack_cards.py');
+const ranker = join(root, 'skills', 'zest-crypto', 'scripts', 'rank_attack_cards.py');
 const invalidCatalog = join(root, 'scripts', 'fixtures', 'zest-crypto', 'catalog-invalid.json');
 const catalog = join(root, 'skills', 'zest-crypto', 'references', 'attack-cards.json');
 const hastadFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'rsa-hastad.json');
+const blockedSageFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'blocked-sage.json');
+const inferredFamilyFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'inferred-family.json');
 const schemaReference = join(root, 'skills', 'zest-crypto', 'references', 'attack-card-schema.md');
 
 function runValidator(catalogPath) {
@@ -48,6 +52,18 @@ function runPython(script, args = []) {
   });
 }
 
+function runRanker(fingerprintPath, catalogPath) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [ranker, fingerprintPath, catalogPath], { cwd: root }, (error, stdout, stderr) => {
+      if (error && typeof error.code !== 'number') {
+        reject(error);
+        return;
+      }
+      resolve({ code: error ? error.code : 0, stderr, stdout });
+    });
+  });
+}
+
 function jsonFenceAfter(contents, marker) {
   const markerOffset = contents.indexOf(marker);
   assert.notEqual(markerOffset, -1, `schema reference is missing: ${marker}`);
@@ -67,6 +83,58 @@ async function withTemporaryCatalog(prefix, contents, operation) {
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }
+}
+
+async function withTemporaryRankingInputs(prefix, fingerprint, catalogDocument, operation) {
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), prefix));
+  const fingerprintPath = join(fixtureDirectory, 'fingerprint.json');
+  const catalogPath = join(fixtureDirectory, 'catalog.json');
+  await writeFile(fingerprintPath, JSON.stringify(fingerprint), 'utf8');
+  await writeFile(catalogPath, JSON.stringify(catalogDocument), 'utf8');
+  try {
+    return await operation(fingerprintPath, catalogPath);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+}
+
+async function documentedAttackCard() {
+  const contents = await readFile(schemaReference, 'utf8');
+  return jsonFenceAfter(contents, 'The following complete card')[0];
+}
+
+function cloneDocument(document) {
+  return JSON.parse(JSON.stringify(document));
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalDigest(value) {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+function rankLibrary(fingerprintPath, catalogPath) {
+  const script = [
+    'import json, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'from zest_crypto_conditions import rank_cards',
+    'from zest_crypto_parse import parse_catalog, parse_fingerprint',
+    "with open(sys.argv[1], encoding='utf-8') as handle:",
+    '  fingerprint = parse_fingerprint(json.load(handle))',
+    "with open(sys.argv[2], encoding='utf-8') as handle:",
+    '  cards = parse_catalog(json.load(handle))',
+    'report = rank_cards(fingerprint, cards)',
+    'print(json.dumps(report.to_document(), sort_keys=True))',
+  ].join('\n');
+  return runPython(script, [fingerprintPath, catalogPath]);
 }
 
 async function parseFingerprintDocument(document) {
@@ -486,4 +554,298 @@ test('schema reference includes exact non-empty blocked and rejected rank entrie
     reason: 'A shared factor was found between two moduli.',
     evidence_fact_ids: ['fact-moduli'],
   }]);
+});
+
+test('ranker marks true hard requirements eligible', async () => {
+  // Given: the documented card with an observed fact satisfying its hard requirement.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-eligible-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: callers invoke the public ranking library interface.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: the hard gate admits the card to the eligible array.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).eligible.map(({ card_id }) => card_id), ['rsa.hastad.broadcast']);
+  });
+});
+
+test('ranker rejects false hard requirements', async () => {
+  // Given: an observed public exponent that contradicts a card requirement.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.requires = [{
+    id: 'requires-e-five',
+    when: { fact: 'rsa.public_exponent', op: 'eq', value: 5 },
+    reason: 'This variant requires exponent five.',
+  }];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-rejected-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: the public library classifies the card.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: an explicit contradiction is rejected with the defining rule.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).rejected, [{
+      card_id: 'rsa.hastad.broadcast',
+      rule_id: 'requires-e-five',
+      reason: 'This variant requires exponent five.',
+      evidence_fact_ids: ['fact-exponent'],
+    }]);
+  });
+});
+
+test('ranker blocks missing hard requirements', async () => {
+  // Given: a card that needs a fact the fingerprint does not contain.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.requires = [{
+    id: 'root-bound-known',
+    when: { fact: 'lattice.unknown_bound', op: 'gte', value: 1 },
+    reason: 'The unknown-root bound is absent.',
+  }];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-blocked-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: the library applies the hard gate.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: the card is blocked for evidence collection, not silently scored.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).blocked, [{
+      card_id: 'rsa.hastad.broadcast',
+      rule_id: 'root-bound-known',
+      reason: 'The unknown-root bound is absent.',
+      evidence_fact_ids: [],
+    }]);
+  });
+});
+
+test('condition evaluator treats inferred facts as unknown for hard gates', async () => {
+  // Given: one inferred family fact used in each class of hard rule.
+  const card = await documentedAttackCard();
+  card.requires = [{
+    id: 'inferred-require',
+    when: { fact: 'construction.canonical_family', op: 'eq', value: 'paper.example-family' },
+    reason: 'Required inferred family.',
+  }];
+  card.rejects = [{
+    id: 'inferred-reject',
+    when: { fact: 'construction.canonical_family', op: 'eq', value: 'paper.example-family' },
+    reason: 'Rejected inferred family.',
+  }];
+  card.negative_matches = [{
+    id: 'inferred-negative',
+    when: { fact: 'construction.canonical_family', op: 'eq', value: 'paper.example-family' },
+    reason: 'Negative inferred family.',
+    unknown_policy: 'ignore',
+  }];
+  await withTemporaryCatalog('zest-crypto-inferred-conditions-', JSON.stringify([card]), async (catalogPath) => {
+    const script = [
+      'import json, sys',
+      "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+      'from zest_crypto_conditions import evaluate_condition',
+      'from zest_crypto_parse import parse_catalog, parse_fingerprint',
+      "with open(sys.argv[1], encoding='utf-8') as handle:",
+      '  fingerprint = parse_fingerprint(json.load(handle))',
+      "with open(sys.argv[2], encoding='utf-8') as handle:",
+      '  card = parse_catalog(json.load(handle))[0]',
+      'facts = {fact.key: fact for fact in fingerprint.facts}',
+      "print(json.dumps([evaluate_condition(card.requires[0].when, facts, True).value, evaluate_condition(card.rejects[0].when, facts, True).value, evaluate_condition(card.negative_matches[0].when, facts, True).value]))",
+    ].join('\n');
+
+    // When: hard conditions are evaluated directly by library consumers.
+    const result = await runPython(script, [inferredFamilyFingerprint, catalogPath]);
+
+    // Then: inference cannot satisfy, reject, or negatively match a hard gate.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), ['unknown', 'unknown', 'unknown']);
+  });
+});
+
+test('ranker lets inferred facts contribute signal weight', async () => {
+  // Given: a positive signal whose only evidence is explicitly inferred.
+  const fingerprint = JSON.parse(await readFile(inferredFamilyFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.requires = [];
+  card.signals = [{
+    id: 'inferred-family-signal',
+    when: { fact: 'construction.canonical_family', op: 'eq', value: 'paper.example-family' },
+    weight: 20,
+    reason: 'The inferred family is a useful ranking signal.',
+  }];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-inferred-signal-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: ranking evaluates a non-hard signal.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: the signal ranks the card without leaking inferred evidence as hard proof.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).eligible, [{
+      card_id: 'rsa.hastad.broadcast',
+      score: 20,
+      matched_signals: ['inferred-family-signal'],
+      unmatched_signals: [],
+      evidence_fact_ids: [],
+      required_tools: [],
+    }]);
+  });
+});
+
+test('ranker blocks unknown negative matches with block policy', async () => {
+  // Given: an inferred negative match that the card declares unsafe to ignore.
+  const fingerprint = JSON.parse(await readFile(inferredFamilyFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.requires = [];
+  card.negative_matches = [{
+    id: 'family-false-friend',
+    when: { fact: 'construction.canonical_family', op: 'eq', value: 'paper.example-family' },
+    reason: 'The false-friend check needs observed evidence.',
+    unknown_policy: 'block',
+  }];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-negative-block-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: the negative-match policy is applied.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: explicit block policy wins over heuristic scoring.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).blocked, [{
+      card_id: 'rsa.hastad.broadcast',
+      rule_id: 'family-false-friend',
+      reason: 'The false-friend check needs observed evidence.',
+      evidence_fact_ids: [],
+    }]);
+  });
+});
+
+test('ranker applies the expected-cost penalty exactly once', async () => {
+  // Given: two matched signals and a high-cost card.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.signals = [
+    { id: 'small-e', when: { fact: 'rsa.public_exponent', op: 'eq', value: 3 }, weight: 20, reason: 'Observed low exponent.' },
+    { id: 'same-message', when: { fact: 'rsa.same_plaintext', op: 'eq', value: true }, weight: 7, reason: 'Observed repeated message.' },
+  ];
+  card.expected_cost = { class: 'high', notes: 'This test exercises the fixed high-cost penalty.' };
+
+  await withTemporaryRankingInputs('zest-crypto-rank-cost-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: the library scores the eligible card.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: 20 + 7 - 25 is charged once, not once per signal.
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).eligible[0].score, 2);
+  });
+});
+
+test('ranker sorts equal scores by ascending card ID', async () => {
+  // Given: two otherwise identical cards in reverse lexical catalog order.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const laterCard = await documentedAttackCard();
+  laterCard.id = 'rsa.zebra.example';
+  laterCard.tooling = [];
+  const earlierCard = cloneDocument(laterCard);
+  earlierCard.id = 'rsa.alpha.example';
+
+  await withTemporaryRankingInputs('zest-crypto-rank-ties-', fingerprint, [laterCard, earlierCard], async (fingerprintPath, catalogPath) => {
+    // When: the public library builds the report.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: lexical card ID is the deterministic tie breaker.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).eligible.map(({ card_id }) => card_id), [
+      'rsa.alpha.example',
+      'rsa.zebra.example',
+    ]);
+  });
+});
+
+test('ranker applies hard-state ordering before unknown requirements', async () => {
+  // Given: a card with both a matching rejection and a missing requirement.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  card.requires = [{
+    id: 'missing-bound',
+    when: { fact: 'lattice.unknown_bound', op: 'exists' },
+    reason: 'The bound is absent.',
+  }];
+  card.rejects = [{
+    id: 'known-broadcast-case',
+    when: { fact: 'rsa.public_exponent', op: 'eq', value: 3 },
+    reason: 'This regression card excludes the known broadcast case.',
+  }];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-state-order-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: the library resolves competing hard-state results.
+    const result = await rankLibrary(fingerprintPath, catalogPath);
+
+    // Then: a matched rejection takes priority over later blocked states.
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).rejected.map(({ rule_id }) => rule_id), ['known-broadcast-case']);
+  });
+});
+
+test('ranker emits byte-identical canonical JSON and digests', async () => {
+  // Given: one fixed fingerprint/catalog pair with non-semantic JSON key ordering.
+  const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.tooling = [];
+  const catalogDocument = [card];
+
+  await withTemporaryRankingInputs('zest-crypto-rank-deterministic-', fingerprint, catalogDocument, async (fingerprintPath, catalogPath) => {
+    // When: the CLI ranks precisely the same input twice.
+    const first = await runRanker(fingerprintPath, catalogPath);
+    const second = await runRanker(fingerprintPath, catalogPath);
+
+    // Then: its complete bytes and both canonical source digests are stable.
+    assert.equal(first.code, 0, first.stderr);
+    assert.equal(second.code, 0, second.stderr);
+    assert.equal(first.stdout, second.stdout);
+    const report = JSON.parse(first.stdout);
+    assert.equal(report.fingerprint_sha256, canonicalDigest(fingerprint));
+    assert.equal(report.catalog_sha256, canonicalDigest(catalogDocument));
+  });
+});
+
+test('ranker blocks missing required commands without running installers', async () => {
+  // Given: a capability record that explicitly marks Sage unavailable.
+  const fingerprint = JSON.parse(await readFile(blockedSageFingerprint, 'utf8'));
+  const card = await documentedAttackCard();
+  card.id = 'lattice.sage.example';
+  card.signals = [];
+  card.requires = [{
+    id: 'polynomial-present',
+    when: { fact: 'lattice.polynomial', op: 'exists' },
+    reason: 'The polynomial must be visible.',
+  }];
+  card.tooling = [{
+    command: 'sage',
+    required: true,
+    packages: ['never-run-installer'],
+    reason: 'SageMath is required for this card.',
+  }];
+  const installerMarker = join(tmpdir(), `zest-crypto-installer-${process.pid}`);
+
+  await withTemporaryRankingInputs('zest-crypto-rank-tool-', fingerprint, [card], async (fingerprintPath, catalogPath) => {
+    // When: a real CLI consumer requests a ranked report.
+    const result = await runRanker(fingerprintPath, catalogPath);
+
+    // Then: it reports the missing tool and does not execute package installation.
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(existsSync(installerMarker), false);
+    assert.deepEqual(JSON.parse(result.stdout).blocked, [{
+      card_id: 'lattice.sage.example',
+      rule_id: 'tool:sage',
+      reason: 'SageMath is required for this card.',
+      evidence_fact_ids: [],
+    }]);
+  });
 });
