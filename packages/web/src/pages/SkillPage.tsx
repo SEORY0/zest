@@ -84,7 +84,9 @@ npm run build
 npm link -w @zest/cli`}
         </pre>
         <p style={{ marginTop: '0.75rem' }}>
-          Everything runs locally. Nothing is uploaded, and no API key is involved. All four skills are listed on{' '}
+          Zest CLI and browser byte processing stay local by default, so no data leaves them. <code>zest-crypto</code>{' '}
+          may make outbound paper, challenge or oracle requests only when the user or case explicitly authorizes network
+          access; it never does so automatically. No API key is needed for local processing. All four skills are listed on{' '}
           <a href={`https://www.skills.sh/${SKILL_REPO}`} target="_blank" rel="noreferrer noopener">
             skills.sh
           </a>
