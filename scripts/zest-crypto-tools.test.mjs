@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import test from 'node:test';
@@ -11,12 +11,14 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const validator = join(root, 'skills', 'zest-crypto', 'scripts', 'validate_attack_cards.py');
 const ranker = join(root, 'skills', 'zest-crypto', 'scripts', 'rank_attack_cards.py');
+const fingerprint = join(root, 'skills', 'zest-crypto', 'scripts', 'fingerprint.py');
 const invalidCatalog = join(root, 'scripts', 'fixtures', 'zest-crypto', 'catalog-invalid.json');
 const catalog = join(root, 'skills', 'zest-crypto', 'references', 'attack-cards.json');
 const hastadFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'rsa-hastad.json');
 const blockedSageFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'blocked-sage.json');
 const inferredFamilyFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'inferred-family.json');
 const schemaReference = join(root, 'skills', 'zest-crypto', 'references', 'attack-card-schema.md');
+const sourceFixtures = join(root, 'scripts', 'fixtures', 'zest-crypto', 'sources');
 
 function runValidator(catalogPath) {
   return runValidatorWith('python3', catalogPath);
@@ -62,6 +64,33 @@ function runRanker(fingerprintPath, catalogPath, environment = process.env) {
       resolve({ code: error ? error.code : 0, stderr, stdout });
     });
   });
+}
+
+function runFingerprint(caseId, inputPaths, environment = process.env, interpreter = 'python3') {
+  return new Promise((resolve, reject) => {
+    execFile(interpreter, [fingerprint, caseId, ...inputPaths], { cwd: root, env: environment }, (error, stdout, stderr) => {
+      if (error && typeof error.code !== 'number') {
+        reject(error);
+        return;
+      }
+      resolve({ code: error ? error.code : 0, stderr, stdout });
+    });
+  });
+}
+
+function fact(document, key) {
+  const result = document.facts.find((item) => item.key === key);
+  assert.notEqual(result, undefined, `missing fingerprint fact: ${key}`);
+  return result;
+}
+
+function failureCode(result) {
+  assert.equal(result.code, 2);
+  assert.equal(result.stderr, '');
+  const document = JSON.parse(result.stdout);
+  assert.equal(document.ok, false);
+  assert.equal(document.issues.length, 1);
+  return document.issues[0].code;
 }
 
 function jsonFenceAfter(contents, marker) {
@@ -948,6 +977,245 @@ test('ranker CLI rejects duplicate fact-key status and value permutations', asyn
         issues: [{ path: '$.facts[5].key', code: 'duplicate-fact-key' }],
       });
     });
+  }
+});
+
+test('fingerprint emits literal RSA broadcast facts without mutating its input', async () => {
+  // Given: an immutable synthetic source with every broadcast relationship stated literally.
+  assert.equal(existsSync(fingerprint), true, 'fingerprint CLI is missing');
+  const source = join(sourceFixtures, 'rsa_broadcast.py');
+  const before = await readFile(source);
+
+  // When: the public fingerprint command inspects the source.
+  const result = await runFingerprint('rsa-literals', [source]);
+
+  // Then: exact source-backed facts and a valid derivation graph are emitted.
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, '');
+  const document = JSON.parse(result.stdout);
+  assert.equal(document.schema_version, 1);
+  assert.equal(document.case_id, 'rsa-literals');
+  assert.equal(document.inputs.length, 1);
+  assert.equal(document.inputs[0].sha256, createHash('sha256').update(before).digest('hex'));
+  assert.match(document.inputs[0].path, /^inputs\/[^/]+$/);
+  assert.deepEqual(fact(document, 'rsa.public_exponent').value, 3);
+  assert.deepEqual(fact(document, 'rsa.moduli').value, [101, 103, 107]);
+  assert.deepEqual(fact(document, 'rsa.ciphertexts').value, [1, 2, 3]);
+  assert.equal(fact(document, 'rsa.same_plaintext').value, true);
+  for (const key of ['rsa.public_exponent', 'rsa.moduli', 'rsa.ciphertexts', 'rsa.same_plaintext']) {
+    const observed = fact(document, key);
+    assert.equal(observed.status, 'observed');
+    assert.equal(observed.evidence.input_id, document.inputs[0].id);
+    assert.match(observed.evidence.locator, /^line \d+$/);
+  }
+  const coprime = fact(document, 'rsa.moduli_pairwise_coprime');
+  assert.equal(coprime.status, 'derived');
+  assert.equal(coprime.value, true);
+  assert.deepEqual(coprime.evidence.source_fact_ids, [fact(document, 'rsa.moduli').id]);
+  assert.match(coprime.evidence.rationale, /gcd/i);
+  assert.equal(new Set(document.facts.map(({ key }) => key)).size, document.facts.length);
+  assert.deepEqual(await readFile(source), before);
+});
+
+test('fingerprint recognizes literal ECDSA samples sharing an r coordinate', async () => {
+  // Given: two literal ECDSA signature tuples with an identical first coordinate.
+  const source = join(sourceFixtures, 'ecdsa_reuse.py');
+
+  // When: source extraction runs through the CLI boundary.
+  const result = await runFingerprint('ecdsa-literals', [source]);
+
+  // Then: it records the scheme, count, and repeated-r fact as direct observations.
+  assert.equal(result.code, 0, result.stderr);
+  const document = JSON.parse(result.stdout);
+  assert.equal(fact(document, 'signature.scheme').value, 'ecdsa');
+  assert.equal(fact(document, 'signature.sample_count').value, 2);
+  assert.equal(fact(document, 'signature.repeated_r').value, true);
+  for (const key of ['signature.scheme', 'signature.sample_count', 'signature.repeated_r']) {
+    assert.equal(fact(document, key).status, 'observed');
+  }
+});
+
+test('fingerprint records canonical paper IDs and one inferred family clue', async () => {
+  // Given: a source with canonical citation URLs and one exact FROST clue.
+  const source = join(sourceFixtures, 'paper_family.py');
+
+  // When: conservative paper clue extraction runs.
+  const result = await runFingerprint('paper-frost', [source]);
+
+  // Then: citations are observed while the family remains explicitly inferred.
+  assert.equal(result.code, 0, result.stderr);
+  const document = JSON.parse(result.stdout);
+  const paperIds = fact(document, 'construction.paper_ids');
+  assert.equal(paperIds.status, 'observed');
+  assert.deepEqual(paperIds.value, ['doi:10.1007/3-540-39799-X_29', 'eprint:2020/852']);
+  const anchors = fact(document, 'construction.source_anchors');
+  assert.equal(anchors.status, 'observed');
+  assert.deepEqual(anchors.value, ['8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac:challenge.py:L1-L20']);
+  const family = fact(document, 'construction.canonical_family');
+  assert.equal(family.status, 'inferred');
+  assert.equal(family.value, 'paper.frost.threshold-signature');
+  assert.match(family.evidence.rationale, /FROST/);
+});
+
+test('fingerprint preserves all exact family clues without claiming an ambiguous canonical family', async () => {
+  // Given: multiple distinct clue families that would make a single conclusion speculative.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-clues-'));
+  const source = join(fixtureDirectory, 'clues.py');
+  await writeFile(source, '# small_roots LLL EllipticCurve MT19937 LFSR Goldwasser FROST UOV CSIDH repeated-round slide\n', 'utf8');
+
+  try {
+    // When: the CLI scans exact allowed clue tokens.
+    const result = await runFingerprint('all-clues', [source]);
+
+    // Then: they remain a source-backed signature instead of a fabricated one-family answer.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    assert.deepEqual(fact(document, 'construction.parameter_signature').value, [
+      'CSIDH', 'EllipticCurve', 'FROST', 'Goldwasser', 'LFSR', 'LLL', 'MT19937', 'UOV', 'repeated-round', 'slide', 'small_roots',
+    ]);
+    assert.equal(document.facts.some(({ key }) => key === 'construction.canonical_family'), false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint reads only literal Python assignments and labeled transcript hex integers', async () => {
+  // Given: dynamic source code plus a transcript whose hexadecimal labels are explicit.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-literals-'));
+  const dynamicSource = join(fixtureDirectory, 'dynamic.py');
+  const transcript = join(fixtureDirectory, 'transcript.txt');
+  await writeFile(dynamicSource, 'e = 3\nn = get_modulus()\n', 'utf8');
+  await writeFile(transcript, 'n = 0x65\ne = 0x03\nc = 0x01\n', 'utf8');
+
+  try {
+    // When: each source crosses its appropriate conservative extractor.
+    const dynamic = await runFingerprint('dynamic-expression', [dynamicSource]);
+    const text = await runFingerprint('hex-transcript', [transcript]);
+
+    // Then: a call result creates no modulus fact, while labeled transcript values do.
+    assert.equal(dynamic.code, 0, dynamic.stderr);
+    const dynamicDocument = JSON.parse(dynamic.stdout);
+    assert.equal(dynamicDocument.facts.some(({ key }) => key === 'rsa.modulus' || key === 'rsa.moduli'), false);
+    assert.equal(text.code, 0, text.stderr);
+    const textDocument = JSON.parse(text.stdout);
+    assert.equal(fact(textDocument, 'rsa.modulus').value, 101);
+    assert.equal(fact(textDocument, 'rsa.public_exponent').value, 3);
+    assert.deepEqual(fact(textDocument, 'rsa.ciphertexts').value, [1]);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint safely retains malformed source artifacts without fabricated facts', async () => {
+  // Given: source text that cannot form a Python AST.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-malformed-'));
+  const malformed = join(fixtureDirectory, 'malformed.py');
+  const contents = Buffer.from('e = 3\n(\n', 'utf8');
+  await writeFile(malformed, contents);
+
+  try {
+    // When: the CLI is asked to fingerprint it.
+    const result = await runFingerprint('malformed-source', [malformed]);
+
+    // Then: immutable input metadata survives and AST-only facts remain absent.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    assert.equal(document.inputs[0].sha256, createHash('sha256').update(contents).digest('hex'));
+    assert.equal(document.facts.some(({ key }) => key.startsWith('rsa.')), false);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint reports invalid UTF-8 and filesystem path boundaries as structured errors', async () => {
+  // Given: invalid bytes, an absent path, a directory, a symlink, and repeated paths.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-paths-'));
+  const invalidUtf8 = join(fixtureDirectory, 'invalid.py');
+  const source = join(fixtureDirectory, 'source.py');
+  const directory = join(fixtureDirectory, 'directory');
+  const link = join(fixtureDirectory, 'source-link.py');
+  await writeFile(invalidUtf8, Buffer.from([0xff]));
+  await writeFile(source, 'e = 3\n', 'utf8');
+  await mkdir(directory);
+  await symlink(source, link);
+
+  try {
+    // When: each untrusted path crosses the public CLI boundary.
+    const cases = [
+      [await runFingerprint('invalid-utf8', [invalidUtf8]), 'input-undecodable'],
+      [await runFingerprint('missing', [join(fixtureDirectory, 'missing.py')]), 'input-unreadable'],
+      [await runFingerprint('directory', [directory]), 'input-not-file'],
+      [await runFingerprint('symlink', [link]), 'input-symlink'],
+      [await runFingerprint('duplicate', [source, source]), 'duplicate-input-path'],
+    ];
+
+    // Then: no boundary failure is exposed as a traceback or a partial fingerprint.
+    for (const [result, expectedCode] of cases) {
+      assert.equal(failureCode(result), expectedCode);
+    }
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint assigns unique case paths to separate inputs with the same basename', async () => {
+  // Given: distinct source files sharing a basename in different directories.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-same-name-'));
+  const firstDirectory = join(fixtureDirectory, 'one');
+  const secondDirectory = join(fixtureDirectory, 'two');
+  const first = join(firstDirectory, 'challenge.py');
+  const second = join(secondDirectory, 'challenge.py');
+  await Promise.all([mkdir(firstDirectory), mkdir(secondDirectory)]);
+  await Promise.all([writeFile(first, 'e = 3\n', 'utf8'), writeFile(second, 'n = 101\n', 'utf8')]);
+
+  try {
+    // When: both input paths are fingerprinted together.
+    const result = await runFingerprint('same-basename', [first, second]);
+
+    // Then: output input identifiers and case-relative paths remain unique.
+    assert.equal(result.code, 0, result.stderr);
+    const document = JSON.parse(result.stdout);
+    assert.equal(new Set(document.inputs.map(({ id }) => id)).size, 2);
+    assert.equal(new Set(document.inputs.map(({ path }) => path)).size, 2);
+    assert.equal(document.inputs.every(({ path }) => path.startsWith('inputs/')), true);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
+});
+
+test('fingerprint discovers capabilities with shutil.which without executing tools', async () => {
+  // Given: executable sentinels ahead of PATH for tools and package managers.
+  const source = join(sourceFixtures, 'rsa_broadcast.py');
+  await withExecutableSentinels(async (environment, markerPath) => {
+    // When: fingerprinting discovers local capabilities.
+    const result = await runFingerprint('capability-discovery', [source], environment);
+
+    // Then: discovery observes the sentinel command but never runs it or an installer.
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(existsSync(markerPath), false);
+    const sage = JSON.parse(result.stdout).capabilities.find(({ command }) => command === 'sage');
+    assert.deepEqual(sage, { command: 'sage', available: true, version: null });
+  });
+});
+
+test('fingerprint keeps structured invalid-input behavior on Python 3.8 when available', async (t) => {
+  // Given: invalid UTF-8 at the supported minimum interpreter boundary.
+  if (!(await commandAvailable('python3.8'))) {
+    t.skip('python3.8 is unavailable');
+    return;
+  }
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-python38-'));
+  const invalidUtf8 = join(fixtureDirectory, 'invalid.py');
+  await writeFile(invalidUtf8, Buffer.from([0xff]));
+
+  try {
+    // When: the Python 3.8 CLI receives untrusted bytes.
+    const result = await runFingerprint('python38-invalid-utf8', [invalidUtf8], process.env, 'python3.8');
+
+    // Then: the stable structured error contract remains available.
+    assert.equal(failureCode(result), 'input-undecodable');
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
   }
 });
 
