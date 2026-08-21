@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Sequence
@@ -35,6 +36,13 @@ def _reject_non_standard_json_constant(value: str) -> None:
     raise json.JSONDecodeError("non-standard JSON constant: {0}".format(value), value, 0)
 
 
+def _parse_finite_json_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise json.JSONDecodeError("non-finite JSON number: {0}".format(value), value, 0)
+    return number
+
+
 def main(arguments: Sequence[str]) -> int:
     if len(arguments) != 1:
         return _failure(CatalogIssue("$", "invalid-arguments", "expected one AttackCards JSON path"))
@@ -43,13 +51,22 @@ def main(arguments: Sequence[str]) -> int:
         raw = json.loads(
             catalog_path.read_text(encoding="utf-8"),
             parse_constant=_reject_non_standard_json_constant,
+            parse_float=_parse_finite_json_float,
         )
         cards = parse_catalog(raw)
         issues = validate_catalog(cards, Path(__file__).resolve().parents[1])
     except OSError as error:
         return _failure(CatalogIssue("$", "input-unreadable", str(error)))
+    except UnicodeError as error:
+        return _failure(CatalogIssue("$", "input-undecodable", str(error)))
+    except RecursionError as error:
+        return _failure(CatalogIssue("$", "input-too-deep", str(error)))
     except json.JSONDecodeError as error:
         return _failure(CatalogIssue("$", "invalid-json", "line {0}, column {1}".format(error.lineno, error.colno)))
+    except OverflowError as error:
+        return _failure(CatalogIssue("$", "invalid-json", str(error)))
+    except ValueError as error:
+        return _failure(CatalogIssue("$", "invalid-input-path", str(error)))
     except ParseError as error:
         return _failure(CatalogIssue(error.path, error.code, error.detail))
     if issues:

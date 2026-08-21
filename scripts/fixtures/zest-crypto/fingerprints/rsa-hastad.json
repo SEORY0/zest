@@ -61,7 +61,8 @@
       "value_type": "boolean",
       "status": "derived",
       "evidence": {
-        "source_fact_ids": ["fact-moduli"]
+        "source_fact_ids": ["fact-moduli"],
+        "rationale": "Pairwise gcd checks over the observed moduli were all one."
       }
     }
   ],

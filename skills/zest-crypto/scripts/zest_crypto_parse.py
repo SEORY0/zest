@@ -11,6 +11,7 @@ or turn malformed boundary data into trusted domain objects.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Dict, Iterable, List, Sequence, Set, Tuple
@@ -92,6 +93,9 @@ VALUE_TYPES = frozenset(("boolean", "integer", "number", "string", "integer_list
 CARD_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+NUMERIC_VALUE_TYPES = frozenset(("integer", "number"))
+CONTAINS_VALUE_TYPES = frozenset(("string", "integer_list", "string_list"))
+LENGTH_VALUE_TYPES = CONTAINS_VALUE_TYPES
 
 
 def _fail(path: str, code: str, detail: str) -> None:
@@ -167,6 +171,8 @@ def _parse_fact_value(raw: Any, value_type: str, path: str) -> FactValue:
     if value_type == "number":
         if not (_is_int(raw) or isinstance(raw, float)):
             _fail(path, "invalid-fact-value", "expected a number")
+        if isinstance(raw, float) and not math.isfinite(raw):
+            _fail(path, "non-finite-number", "expected a finite number")
         return raw
     if value_type == "string":
         return _string(raw, path, "invalid-fact-value")
@@ -196,8 +202,8 @@ def _parse_evidence(raw: Any, path: str, status: FactStatus) -> Evidence:
     )
     if status is FactStatus.OBSERVED and (input_id is None or locator is None):
         _fail(path, "invalid-evidence", "observed facts require input_id and locator")
-    if status is FactStatus.DERIVED and not parsed_source_ids:
-        _fail(path, "invalid-evidence", "derived facts require source_fact_ids")
+    if status is FactStatus.DERIVED and (not parsed_source_ids or rationale is None):
+        _fail(path, "invalid-evidence", "derived facts require source_fact_ids and rationale")
     if status is FactStatus.INFERRED and rationale is None:
         _fail(path, "invalid-evidence", "inferred facts require a rationale")
     return Evidence(input_id, locator, parsed_source_ids, rationale)
@@ -225,6 +231,7 @@ def _parse_case_relative_path(raw: Any, path: str, code: str) -> str:
         or windows.is_absolute()
         or windows.drive
         or windows.root
+        or "\x00" in value
         or "\\" in value
         or ".." in posix.parts
         or ".." in windows.parts
@@ -276,14 +283,21 @@ def parse_fingerprint(raw: JsonValue) -> Fingerprint:
         )
     _check_unique([str(item.id) for item in facts], "$.facts", "duplicate-fact-id")
     input_ids = frozenset(item.id for item in inputs)
-    for fact in facts:
+    for index, fact in enumerate(facts):
         if fact.status is FactStatus.OBSERVED and fact.evidence.input_id not in input_ids:
-            _fail("$.facts[{0}].evidence.input_id".format(facts.index(fact)), "unknown-input-id", "evidence must name a fingerprint input")
+            _fail("$.facts[{0}].evidence.input_id".format(index), "unknown-input-id", "evidence must name a fingerprint input")
     fact_ids = frozenset(item.id for item in facts)
-    for fact in facts:
-        for source_id in fact.evidence.source_fact_ids:
+    derived_dependencies: Dict[FactId, Tuple[FactId, ...]] = {}
+    for index, fact in enumerate(facts):
+        for source_index, source_id in enumerate(fact.evidence.source_fact_ids):
+            source_path = "$.facts[{0}].evidence.source_fact_ids[{1}]".format(index, source_index)
             if source_id not in fact_ids:
-                _fail("$.facts[{0}].evidence.source_fact_ids".format(facts.index(fact)), "unknown-source-fact-id", "derived evidence must name a fingerprint fact")
+                _fail(source_path, "unknown-source-fact-id", "derived evidence must name a fingerprint fact")
+            if source_id == fact.id:
+                _fail(source_path, "self-referential-derived-fact", "a derived fact may not cite itself")
+        if fact.status is FactStatus.DERIVED:
+            derived_dependencies[fact.id] = fact.evidence.source_fact_ids
+    _reject_derived_fact_cycles(facts, derived_dependencies)
 
     capabilities: List[Capability] = []
     for index, item in enumerate(_array(value["capabilities"], "$.capabilities")):
@@ -320,6 +334,26 @@ def _optional_nonnegative_integer(value: Dict[str, Any], key: str, path: str) ->
     if raw is None:
         return None
     return _integer(raw, path + "." + key, 0)
+
+
+def _reject_derived_fact_cycles(facts: Sequence[Fact], dependencies: Dict[FactId, Tuple[FactId, ...]]) -> None:
+    unresolved = set(dependencies)
+    while unresolved:
+        ready = [fact_id for fact_id in unresolved if not unresolved.intersection(dependencies[fact_id])]
+        if ready:
+            unresolved.difference_update(ready)
+            continue
+        for index, fact in enumerate(facts):
+            if fact.id not in unresolved:
+                continue
+            for source_index, source_id in enumerate(fact.evidence.source_fact_ids):
+                if source_id in unresolved:
+                    _fail(
+                        "$.facts[{0}].evidence.source_fact_ids[{1}]".format(index, source_index),
+                        "cyclic-derived-facts",
+                        "derived evidence may not form a cycle",
+                    )
+        raise AssertionError("unreachable")
 
 
 def _parse_condition(raw: Any, path: str, boolean_depth: int = 0) -> Condition:
@@ -364,7 +398,7 @@ def _parse_condition_value(raw: Any, value_type: str, operator: Operator, path: 
     if operator in (Operator.EQ, Operator.NEQ):
         return _parse_fact_value(raw, value_type, path)
     if operator in (Operator.LT, Operator.LTE, Operator.GT, Operator.GTE):
-        if value_type not in ("integer", "number"):
+        if value_type not in NUMERIC_VALUE_TYPES:
             _fail(path, "invalid-condition-value", "comparison operators require numeric facts")
         return _parse_fact_value(raw, value_type, path)
     if operator is Operator.IN:
@@ -374,14 +408,17 @@ def _parse_condition_value(raw: Any, value_type: str, operator: Operator, path: 
         element_type = "string" if value_type == "string_list" else "integer" if value_type == "integer_list" else value_type
         return tuple(_parse_fact_value(item, element_type, "{0}[{1}]".format(path, index)) for index, item in enumerate(values))
     if operator is Operator.CONTAINS:
+        if value_type not in CONTAINS_VALUE_TYPES:
+            _fail(path, "invalid-condition-value", "contains requires a string or list fact")
         if value_type == "string":
             return _parse_fact_value(raw, "string", path)
         if value_type == "integer_list":
             return _parse_fact_value(raw, "integer", path)
         if value_type == "string_list":
             return _parse_fact_value(raw, "string", path)
-        _fail(path, "invalid-condition-value", "contains requires a string or list fact")
     if operator in (Operator.LEN_EQ, Operator.LEN_GTE):
+        if value_type not in LENGTH_VALUE_TYPES:
+            _fail(path, "invalid-condition-value", "length operators require a string or list fact")
         return _integer(raw, path, 0)
     _fail(path, "unknown-operator", "operator is not supported")
     raise AssertionError("unreachable")
