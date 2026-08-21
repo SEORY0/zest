@@ -14,6 +14,7 @@ import re
 import shutil
 import stat
 import sys
+import unicodedata
 from pathlib import Path
 
 from zest_crypto_parse import FACT_VALUE_TYPES
@@ -21,7 +22,7 @@ from zest_crypto_parse import FACT_VALUE_TYPES
 
 CAPABILITY_COMMANDS = ("python3", "sage", "z3")
 DOI_URL = re.compile(r"https://(?:dx\.)?doi\.org/(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)", re.IGNORECASE)
-EPRINT_URL = re.compile(r"https://eprint\.iacr\.org/(\d{4}/\d+)(?:\.pdf)?(?=$|[\s\"'<>()\[\]{},;!])", re.IGNORECASE)
+EPRINT_URL = re.compile(r"https://eprint\.iacr\.org/(\d{4}/\d+)(?:\.pdf)?", re.IGNORECASE)
 HEX_INTEGER = re.compile(r"^\s*(n|modulus|e|public_exponent|c|ciphertext)\s*=\s*(0x[0-9a-fA-F]+)\s*$", re.MULTILINE)
 CLUE_TOKEN = re.compile(r"(?<![A-Za-z0-9_])(small_roots|LLL|EllipticCurve|MT19937|LFSR|Goldwasser|FROST|UOV|CSIDH|repeated-round|slide)(?![A-Za-z0-9_])")
 CLUE_FAMILIES = {
@@ -37,6 +38,8 @@ CLUE_FAMILIES = {
     "repeated-round": "symmetric.slide.periodic-round",
     "slide": "symmetric.slide.periodic-round",
 }
+ANCHOR_ASCII = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-/")
+URL_CLOSERS = frozenset(("\"", "'", "<", ">", ")", "]", "}"))
 
 
 class InputError(Exception):
@@ -112,13 +115,13 @@ def _immutable_anchor(value):
     """Accept ``repo@40-hex-SHA/path:Lx-Ly`` immutable source anchors only."""
 
     repository, marker, revision_path = value.rpartition("@")
-    if not marker or not repository or "@" in repository or any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in repository):
+    if not marker or "@" in repository or not _anchor_ascii(repository):
         return False
     revision, separator, location = revision_path.partition("/")
     if not separator or len(revision) != 40 or any(character not in "0123456789abcdef" for character in revision):
         return False
     source_path, line_marker, line_range = location.rpartition(":")
-    if not line_marker or not source_path or source_path.startswith("/") or "\\" in source_path or any(ord(character) < 32 or ord(character) == 127 for character in source_path):
+    if not line_marker or source_path.startswith("/") or "\\" in source_path or not _anchor_ascii(source_path):
         return False
     components = source_path.split("/")
     if any(component in ("", ".", "..") for component in components):
@@ -126,9 +129,17 @@ def _immutable_anchor(value):
     first, hyphen, last = line_range.partition("-")
     if not hyphen or first.count("L") != 1 or last.count("L") != 1 or not first.startswith("L") or not last.startswith("L"):
         return False
-    if not first[1:].isdigit() or not last[1:].isdigit():
+    if not _line_number(first[1:]) or not _line_number(last[1:]):
         return False
-    return int(first[1:]) > 0 and int(first[1:]) <= int(last[1:])
+    return len(first[1:]) < len(last[1:]) or len(first[1:]) == len(last[1:]) and first[1:] <= last[1:]
+
+
+def _anchor_ascii(value):
+    return bool(value) and all(unicodedata.category(character).startswith("C") is False and character in ANCHOR_ASCII for character in value)
+
+
+def _line_number(value):
+    return bool(value) and value[0] != "0" and all("0" <= character <= "9" for character in value)
 
 
 def _signature_samples(value):
@@ -237,10 +248,16 @@ def _extract_clues(text, input_index, observations):
 
 def _extract_text(text, input_index, observations):
     paper_matches = [("doi:{0}".format(match.group(1)), _line(text, match.start(1))) for match in DOI_URL.finditer(text)]
-    paper_matches.extend(("eprint:{0}".format(match.group(1)), _line(text, match.start(1))) for match in EPRINT_URL.finditer(text))
+    paper_matches.extend(("eprint:{0}".format(match.group(1)), _line(text, match.start(1))) for match in EPRINT_URL.finditer(text) if _eprint_terminated(text, match.end()))
     if paper_matches:
         _add(observations, "construction.paper_ids", sorted(set(value for value, _line_number in paper_matches)), input_index, tuple(line for _value, line in paper_matches))
     _extract_clues(text, input_index, observations)
+
+
+def _eprint_terminated(text, end):
+    if end == len(text) or text[end].isspace() or text[end] in URL_CLOSERS:
+        return True
+    return text[end] in ".,;!?" and (end + 1 == len(text) or text[end + 1].isspace() or text[end + 1] in URL_CLOSERS)
 
 
 def _selected(observations, key):

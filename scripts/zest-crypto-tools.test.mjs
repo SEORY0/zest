@@ -1388,6 +1388,10 @@ test('fingerprint emits only documented immutable source anchors', async () => {
     ['empty.py', [], false],
     ['nul-repository.py', ['repo\u0000@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L1-L20'], false],
     ['control-path.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge\u001f.py:L1-L20'], false],
+    ['c1-path.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge\u0080.py:L1-L20'], false],
+    ['bidi-path.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge\u202e.py:L1-L20'], false],
+    ['arabic-digits.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L١-L٢'], false],
+    ['superscript-digits.py', ['repo@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/challenge.py:L²-L²'], false],
     ['mixed.py', [validAnchor, 'github.com/example/zest@not-a-sha/challenge.py:L1-L20'], false],
   ];
 
@@ -1417,26 +1421,38 @@ test('fingerprint accepts only canonical bare and PDF ePrint URLs', async () => 
   const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-eprint-'));
   const invalid = join(fixtureDirectory, 'invalid.py');
   const valid = join(fixtureDirectory, 'valid.py');
+  const prose = join(fixtureDirectory, 'prose.py');
   await writeFile(invalid, [
     'prefix = "https://eprint.iacr.org/2020/852evil"',
     'query = "https://eprint.iacr.org/2020/852?download=1"',
     'fragment = "https://eprint.iacr.org/2020/852#page=1"',
+    'semicolon = "https://eprint.iacr.org/2020/852;download=1"',
+    'exclamation = "https://eprint.iacr.org/2020/852!suffix"',
+    'comma = "https://eprint.iacr.org/2020/852,continued"',
+    'path = "https://eprint.iacr.org/2020/852/appendix"',
   ].join('\n'), 'utf8');
   await writeFile(valid, [
     'bare = "https://eprint.iacr.org/2020/852"',
     'pdf = "https://eprint.iacr.org/2021/123.pdf"',
+  ].join('\n'), 'utf8');
+  await writeFile(prose, [
+    'bare = "See https://eprint.iacr.org/2020/852, then continue."',
+    'pdf = "Read https://eprint.iacr.org/2021/123.pdf; then continue."',
   ].join('\n'), 'utf8');
 
   try {
     // When: both citation texts are scanned.
     const invalidResult = await runFingerprint('invalid-eprint', [invalid]);
     const validResult = await runFingerprint('valid-eprint', [valid]);
+    const proseResult = await runFingerprint('prose-eprint', [prose]);
 
     // Then: only complete canonical URL forms become exact paper IDs.
     assert.equal(invalidResult.code, 0, invalidResult.stderr);
     assert.equal(JSON.parse(invalidResult.stdout).facts.some(({ key }) => key === 'construction.paper_ids'), false);
     assert.equal(validResult.code, 0, validResult.stderr);
     assert.deepEqual(fact(JSON.parse(validResult.stdout), 'construction.paper_ids').value, ['eprint:2020/852', 'eprint:2021/123']);
+    assert.equal(proseResult.code, 0, proseResult.stderr);
+    assert.deepEqual(fact(JSON.parse(proseResult.stdout), 'construction.paper_ids').value, ['eprint:2020/852', 'eprint:2021/123']);
   } finally {
     await rm(fixtureDirectory, { force: true, recursive: true });
   }
