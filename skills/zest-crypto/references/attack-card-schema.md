@@ -106,8 +106,11 @@ The finite v1 fact vocabulary is:
 | `construction.toy_invariant_verified` | `boolean` |
 | `construction.negative_matches_checked` | `string_list` |
 
-Unknown keys and a mismatched `value_type` are rejected. Fact IDs and card IDs
-must be unique within their enclosing arrays.
+Unknown keys and a mismatched `value_type` are rejected. Fact IDs and fact keys
+must each be unique within a fingerprint; card IDs must be unique within the
+catalog. `FactIndex` maps each fact key to one fact, so a duplicate key is
+rejected instead of silently selecting an order-dependent value or evidence
+record.
 
 ## Predicate DSL and tri-state semantics
 
@@ -328,7 +331,7 @@ The complete JSON below is parseable and illustrates every public entry shape.
 
 The parser reports a single first failure. Important diagnostic codes are
 `input-unreadable`, `invalid-json`, `unknown-schema-version`,
-`duplicate-fact-id`, `duplicate-card-id`, `unknown-fact-key`,
+`duplicate-fact-id`, `duplicate-fact-key`, `duplicate-card-id`, `unknown-fact-key`,
 `unknown-operator`, `boolean-nesting-too-deep`, `invalid-signal-weight`,
 `invalid-template-path`, `missing-citation-identifier`, and
 `research-card-missing-pinned-example`. `input-undecodable` and

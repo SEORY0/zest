@@ -286,6 +286,7 @@ Schema rules:
 - `case_id` is non-secret and derived from a label plus an input digest prefix.
 - `path` is case-relative; source paths outside the case are recorded separately in local notes and are not published.
 - `facts[].key` comes from the finite vocabulary documented in `attack-card-schema.md`.
+- Fact IDs and fact keys must each be unique within a fingerprint. `FactIndex` maps each fact key to one fact, so duplicate keys are rejected rather than selecting an order-dependent value or evidence record.
 - `value_type` is one of `boolean`, `integer`, `number`, `string`, `integer_list`, or `string_list`.
 - `status` is one of `observed`, `derived`, or `inferred`.
 - `observed` facts cite a direct input location; `derived` facts cite the source fact IDs and derivation; `inferred` facts state a rationale and may be used as signals but never satisfy a hard precondition by themselves.

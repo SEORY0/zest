@@ -577,6 +577,24 @@ test('schema reference includes exact non-empty blocked and rejected rank entrie
   }]);
 });
 
+test('schema documents the one-fact-per-key FactIndex contract', async () => {
+  // Given: the public schema and the implementation design that define v1 fingerprint input.
+  const designSpecification = join(root, 'docs', 'superpowers', 'specs', '2026-08-20-zest-crypto-portable-skill-design.md');
+  const [schema, design] = await Promise.all([
+    readFile(schemaReference, 'utf8'),
+    readFile(designSpecification, 'utf8'),
+  ]);
+
+  // When: a consumer checks the published uniqueness rules before constructing a fingerprint.
+  for (const document of [schema, design]) {
+    assert.match(document, /fact IDs and fact keys\s+must each be unique within a fingerprint/i);
+    assert.match(document, /`FactIndex` maps each fact key to one fact/i);
+  }
+
+  // Then: the parser's stable duplicate-key boundary code is part of the exact schema.
+  assert.match(schema, /`duplicate-fact-key`/);
+});
+
 test('ranker marks true hard requirements eligible', async () => {
   // Given: the documented card with an observed fact satisfying its hard requirement.
   const fingerprint = JSON.parse(await readFile(hastadFingerprint, 'utf8'));
