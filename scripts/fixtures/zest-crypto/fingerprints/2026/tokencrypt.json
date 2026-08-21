@@ -1,0 +1,99 @@
+{
+  "schema_version": 2,
+  "case_id": "bsidessf-2026-tokencrypt",
+  "inputs": [
+    {
+      "id": "service",
+      "path": "inputs/tokencrypt/challenge/src/tc_demo.py",
+      "sha256": "36b69f8f93515203570b1b5b25946599e61061859e327c6b8acbd8e1e100ac6c",
+      "media_type": "text/x-python"
+    },
+    {
+      "id": "implementation",
+      "path": "inputs/tokencrypt/challenge/src/tokencrypt.py",
+      "sha256": "b74ca4c1de0a8c54ef19313e841f67d6fcdf3ccc47bc5ad00a9c5e3f14ce977c",
+      "media_type": "text/x-python"
+    }
+  ],
+  "facts": [
+    {
+      "id": "family",
+      "key": "construction.canonical_family",
+      "value": "symmetric.slide.periodic-round",
+      "value_type": "string",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchors"],
+        "rationale": "The pinned service round choices and implementation compose one reusable 16-round Feistel/affine chunk, identifying the periodic-round slide family."
+      }
+    },
+    {
+      "id": "anchors",
+      "key": "construction.source_anchors",
+      "value": [
+        "github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/tokencrypt/challenge/src/tc_demo.py:L12-L175",
+        "github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/tokencrypt/challenge/src/tokencrypt.py:L11-L326"
+      ],
+      "value_type": "string_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "implementation",
+        "locator": "tc_demo.py:L12-L175; tokencrypt.py:L11-L326"
+      }
+    },
+    {
+      "id": "parameters",
+      "key": "construction.parameter_signature",
+      "value": [
+        "chosen-16-round-pairs",
+        "feistel-subkey-16-bit",
+        "affine-map-24x24",
+        "flag-1024-rounds-64-chunks",
+        "public-counter-xor-wrapper"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchors"],
+        "rationale": "The two pinned files jointly establish the 16-round chosen-input surface, 16-bit effective core, 24x24 affine layer, 64-chunk target, and public counter XOR normalization."
+      }
+    },
+    {
+      "id": "toy",
+      "key": "construction.toy_invariant_verified",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "parameters"],
+        "rationale": "The blind evaluation exhausted all 2^16 numeric subkeys on 64 source-faithful chosen pairs, recovered a rank-25 affine map, replayed every pair, and round-tripped a 64-chunk local target."
+      }
+    },
+    {
+      "id": "negative-checks",
+      "key": "construction.negative_matches_checked",
+      "value": [
+        "public-counter-xor-wrapper-normalized"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "parameters"],
+        "rationale": "The local proof included the public counter XOR in every forward and inverse chunk and therefore rejected the bare E=F^r model."
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "python3",
+      "available": true,
+      "version": "3.8"
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 64
+  }
+}

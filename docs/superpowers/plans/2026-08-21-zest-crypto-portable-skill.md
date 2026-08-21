@@ -481,7 +481,8 @@ Pin challenge examples to immutable source paths:
 UofTCTF/uoftctf-2026-chals-public@8519e2bb.../mat347/dist/chall.py
 UofTCTF/uoftctf-2026-chals-public@8519e2bb.../rotor-cipher/rotor_cipher.py
 BSidesSF/ctf-2026-release@68ee0e46.../lfstream/challenge/lfsr_crypt.py
-BSidesSF/ctf-2026-release@68ee0e46.../tokencrypt/distfiles/tokencrypt.py
+BSidesSF/ctf-2026-release@68ee0e46.../tokencrypt/challenge/src/tc_demo.py
+BSidesSF/ctf-2026-release@68ee0e46.../tokencrypt/challenge/src/tokencrypt.py
 BSidesSF/ctf-2026-release@68ee0e46.../kproof/challenge/src/kproof.go
 ```
 
@@ -639,7 +640,7 @@ Do not copy official solution directories into the blind evaluation workspace.
 
 - [ ] **Step 2: Generate and lock routing fixtures**
 
-Fingerprint the five challenge source paths named in Task 5. Add only normalized public facts, repository SHA, source path, and expected card ID to repository fixtures. Do not commit challenge files, flags, live endpoints, or official solver code.
+Fingerprint the five challenge cases and their pinned source paths named in Task 5. The pinned BSidesSF revision has no `tokencrypt/distfiles/tokencrypt.py`; its service and implementation are the two `tokencrypt/challenge/src/` files above. Add only normalized public facts, repository SHA, source path, and expected card ID to repository fixtures. Do not commit challenge files, flags, live endpoints, or official solver code.
 
 Add tests requiring the exact intended card in top three for all five and top one for at least four.
 

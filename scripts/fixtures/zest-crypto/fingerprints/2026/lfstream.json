@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "case_id": "bsidessf-2026-lfstream",
+  "inputs": [
+    {
+      "id": "source",
+      "path": "inputs/lfstream/challenge/lfsr_crypt.py",
+      "sha256": "5b197b98bec16e8d013d292ffe2c297f17267598af7341c8502e0f7778011a1e",
+      "media_type": "text/x-python"
+    },
+    {
+      "id": "known-prefix",
+      "path": "inputs/lfstream/challenge/png_header.bin",
+      "sha256": "30188ad79779aa1ccbd6d9c05106cbc6a42919a5b8c54e28d70eb7ca23388a6a",
+      "media_type": "application/octet-stream"
+    },
+    {
+      "id": "ciphertext",
+      "path": "inputs/lfstream/challenge/flag.png.enc_lfsr",
+      "sha256": "3e23594a9b4e277afb64263d2db6b708bf511995b71b3ddd15e35c48c876d97b",
+      "media_type": "application/octet-stream"
+    }
+  ],
+  "facts": [
+    {
+      "id": "family",
+      "key": "prng.family",
+      "value": "galois-lfsr",
+      "value_type": "string",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L4-L45"
+      }
+    },
+    {
+      "id": "outputs",
+      "key": "prng.output_count",
+      "value": 2,
+      "value_type": "integer",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family"],
+        "rationale": "XORing the immutable 18-byte known-prefix input with the immutable ciphertext input exposes at least four complete 32-bit state words under the observed Galois-LFSR source schedule."
+      }
+    },
+    {
+      "id": "word-bits",
+      "key": "prng.output_word_bits",
+      "value": 32,
+      "value_type": "integer",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "state-word output"
+      }
+    },
+    {
+      "id": "alignment",
+      "key": "prng.outputs_aligned",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "word-bits"],
+        "rationale": "The known-prefix and ciphertext inputs begin at byte zero, and the source emits the current 32-bit state in big-endian blocks from byte zero."
+      }
+    },
+    {
+      "id": "anchor",
+      "key": "construction.source_anchors",
+      "value": [
+        "github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/lfstream/challenge/lfsr_crypt.py:L4-L45"
+      ],
+      "value_type": "string_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L4-L45"
+      }
+    },
+    {
+      "id": "parameters",
+      "key": "construction.parameter_signature",
+      "value": [
+        "known-plaintext",
+        "state-word-big-endian-one-step-per-block"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "outputs", "word-bits", "alignment", "anchor"],
+        "rationale": "The pinned source schedule and immutable aligned known-prefix/ciphertext artifacts jointly establish known plaintext with one big-endian state word emitted per LFSR step."
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "python3",
+      "available": true,
+      "version": "3.8"
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 0
+  }
+}

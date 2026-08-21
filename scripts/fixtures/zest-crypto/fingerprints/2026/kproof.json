@@ -1,0 +1,110 @@
+{
+  "schema_version": 2,
+  "case_id": "bsidessf-2026-kproof",
+  "inputs": [
+    {
+      "id": "source",
+      "path": "inputs/kproof/challenge/src/kproof.go",
+      "sha256": "d92ebcca48f01c6ddc2ffce90c2ffbc8b263c968c2979cd2dbddb2866d18de9a",
+      "media_type": "text/x-go"
+    },
+    {
+      "id": "client",
+      "path": "inputs/kproof/challenge/src/client.py",
+      "sha256": "62a180855b152eec9a98450ff5a9f14a6a12a14911ff82806109a64f4c0eba64",
+      "media_type": "text/x-python"
+    },
+    {
+      "id": "capture",
+      "path": "inputs/kproof/distfiles/flag.pcap",
+      "sha256": "c5d20b04c5f3cc90b076d5906a1d5d38d6d67f508bb885ae4cebe60c68b57f5f",
+      "media_type": "application/vnd.tcpdump.pcap"
+    }
+  ],
+  "facts": [
+    {
+      "id": "oracle-kind",
+      "key": "oracle.kind",
+      "value": "goldwasser-micali-key-wrapper",
+      "value_type": "string",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L64-L690"
+      }
+    },
+    {
+      "id": "response",
+      "key": "oracle.distinguishable_response",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["oracle-kind"],
+        "rationale": "The pinned source returns a certificate containing the decrypted payload hash, and the immutable capture contains one successfully verified certificate response."
+      }
+    },
+    {
+      "id": "chosen-ciphertext",
+      "key": "oracle.chosen_ciphertext",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["oracle-kind"],
+        "rationale": "The source accepts a caller-supplied 128-element GM ciphertext vector, and the public client/capture establish its serialized input shape."
+      }
+    },
+    {
+      "id": "query-budget",
+      "key": "oracle.query_budget",
+      "value": 128,
+      "value_type": "integer",
+      "status": "inferred",
+      "evidence": {
+        "rationale": "Exactly 128 classifications are mathematically required, but the offline public artifacts contain no authorization or live-service budget; the blind evaluation therefore keeps this hard precondition blocked."
+      }
+    },
+    {
+      "id": "anchor",
+      "key": "construction.source_anchors",
+      "value": [
+        "github.com/BSidesSF/ctf-2026-release@68ee0e460eb572aaec17f082071f8ebf1d6f7330/kproof/challenge/src/kproof.go:L64-L690"
+      ],
+      "value_type": "string_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L64-L690"
+      }
+    },
+    {
+      "id": "parameters",
+      "key": "construction.parameter_signature",
+      "value": [
+        "captured-128-bit-gm-ciphertext-vector",
+        "replicate-each-captured-ciphertext-128-times",
+        "hash-certificate-bit-classifier"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["oracle-kind", "response", "chosen-ciphertext"],
+        "rationale": "The pinned source and immutable capture jointly show a 128-bit captured GM vector, caller-controlled vector replication, and the certificate-hash response needed for bit classification."
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "python3",
+      "available": true,
+      "version": "3.8"
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 128
+  }
+}

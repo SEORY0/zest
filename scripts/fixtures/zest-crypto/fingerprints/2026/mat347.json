@@ -1,0 +1,90 @@
+{
+  "schema_version": 2,
+  "case_id": "uoftctf-2026-mat347",
+  "inputs": [
+    {
+      "id": "source",
+      "path": "inputs/mat347/dist/chall.py",
+      "sha256": "a61f983d1438d0e9ea17771501637e4d4188b96b097a4b61da0583ec148e2465",
+      "media_type": "text/x-python"
+    }
+  ],
+  "facts": [
+    {
+      "id": "family",
+      "key": "construction.canonical_family",
+      "value": "lattice.subset-sum.query-schedule",
+      "value_type": "string",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchor"],
+        "rationale": "The pinned span exposes one adaptive counter chain, nonce hashing, the custom signature law, and exchange reuse; together they define the query-schedule subset-sum family."
+      }
+    },
+    {
+      "id": "anchor",
+      "key": "construction.source_anchors",
+      "value": [
+        "github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/mat347/dist/chall.py:L24-L55"
+      ],
+      "value_type": "string_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L24-L55"
+      }
+    },
+    {
+      "id": "parameters",
+      "key": "construction.parameter_signature",
+      "value": [
+        "adaptive-query-schedule",
+        "nonce-subset-sum",
+        "mat347-signature-k-times-s-minus-xr-equals-z"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchor"],
+        "rationale": "These normalized parameters are derived from the state transition, nonce construction, and k*(s-x*r)=z equation in the pinned source span."
+      }
+    },
+    {
+      "id": "toy",
+      "key": "construction.toy_invariant_verified",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "parameters"],
+        "rationale": "The blind evaluation replayed an 8-bit counter wrap on the source-faithful P-256 equations, verified both custom signatures, and verified the recovered shared-point identity."
+      }
+    },
+    {
+      "id": "negative-checks",
+      "key": "construction.negative_matches_checked",
+      "value": [
+        "paper.wagner.generalized-birthday"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "parameters"],
+        "rationale": "The adaptive single state chain and custom signature equation rule out independent Wagner lists and standard ECDSA substitution."
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "python3",
+      "available": true,
+      "version": "3.8"
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 670
+  }
+}

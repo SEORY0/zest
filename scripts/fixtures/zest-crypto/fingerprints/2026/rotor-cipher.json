@@ -1,0 +1,76 @@
+{
+  "schema_version": 2,
+  "case_id": "uoftctf-2026-rotor-cipher",
+  "inputs": [
+    {
+      "id": "source",
+      "path": "inputs/rotor-cipher/rotor_cipher.py",
+      "sha256": "9ad2c069ef711ccc57216ccaab8d4490af0a71a267cd7aadeb88dc54e2101216",
+      "media_type": "text/x-python"
+    }
+  ],
+  "facts": [
+    {
+      "id": "family",
+      "key": "construction.canonical_family",
+      "value": "symmetric.rotor.group-conjugacy",
+      "value_type": "string",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchor"],
+        "rationale": "The pinned stepping and matrix-composition code combined with its known-message log yields a finite permutation-conjugacy recovery problem."
+      }
+    },
+    {
+      "id": "anchor",
+      "key": "construction.source_anchors",
+      "value": [
+        "github.com/UofTCTF/uoftctf-2026-chals-public@8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac/rotor-cipher/rotor_cipher.py:L46-L149"
+      ],
+      "value_type": "string_list",
+      "status": "observed",
+      "evidence": {
+        "input_id": "source",
+        "locator": "L46-L149"
+      }
+    },
+    {
+      "id": "parameters",
+      "key": "construction.parameter_signature",
+      "value": [
+        "observed-permutation-conjugacy",
+        "known-symbol-mappings"
+      ],
+      "value_type": "string_list",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["anchor"],
+        "rationale": "Observed rotor positions and known plaintext/ciphertext symbol mappings normalize to conjugacy equations under the pinned rotate-before-encrypt semantics."
+      }
+    },
+    {
+      "id": "toy",
+      "key": "construction.toy_invariant_verified",
+      "value": true,
+      "value_type": "boolean",
+      "status": "derived",
+      "evidence": {
+        "source_fact_ids": ["family", "parameters"],
+        "rationale": "The blind evaluation exhausted all 6! conjugators for a source-faithful six-symbol system, found one solution, and passed an independent held-out mapping before the 26-symbol solve."
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "command": "python3",
+      "available": true,
+      "version": "3.8"
+    }
+  ],
+  "constraints": {
+    "network": "disabled",
+    "max_seconds": 300,
+    "max_memory_mb": 4096,
+    "max_oracle_queries": 0
+  }
+}

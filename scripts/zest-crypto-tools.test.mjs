@@ -17,8 +17,86 @@ const catalog = join(root, 'skills', 'zest-crypto', 'references', 'attack-cards.
 const hastadFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'rsa-hastad.json');
 const blockedSageFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'blocked-sage.json');
 const inferredFamilyFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'inferred-family.json');
+const challenge2026FingerprintDirectory = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', '2026');
 const schemaReference = join(root, 'skills', 'zest-crypto', 'references', 'attack-card-schema.md');
 const sourceFixtures = join(root, 'scripts', 'fixtures', 'zest-crypto', 'sources');
+const challenge2026RoutingFixtures = [
+  {
+    name: 'MAT347',
+    path: join(challenge2026FingerprintDirectory, 'mat347.json'),
+    intendedCardId: 'lattice.subset-sum.query-schedule',
+    expectedBucket: 'eligible',
+    expectedTopThree: ['lattice.subset-sum.query-schedule'],
+    expectedExample: {
+      challenge_id: 'uoftctf-2026-mat347',
+      repo_sha: '8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac',
+      source_kind: 'remote',
+      source_path: 'mat347/dist/chall.py',
+      source_lines: 'L24-L55',
+    },
+  },
+  {
+    name: 'Rotor Cipher',
+    path: join(challenge2026FingerprintDirectory, 'rotor-cipher.json'),
+    intendedCardId: 'symmetric.rotor.group-conjugacy',
+    expectedBucket: 'eligible',
+    expectedTopThree: ['symmetric.rotor.group-conjugacy'],
+    expectedExample: {
+      challenge_id: 'uoftctf-2026-rotor-cipher',
+      repo_sha: '8519e2bb29b3e49b0e48a2078728f9fc6e6cb0ac',
+      source_kind: 'remote',
+      source_path: 'rotor-cipher/rotor_cipher.py',
+      source_lines: 'L46-L149',
+    },
+  },
+  {
+    name: 'lfstream',
+    path: join(challenge2026FingerprintDirectory, 'lfstream.json'),
+    intendedCardId: 'stream.lfsr.known-plaintext',
+    expectedBucket: 'eligible',
+    expectedTopThree: ['stream.lfsr.known-plaintext'],
+    expectedExample: {
+      challenge_id: 'bsidessf-2026-lfstream',
+      repo_sha: '68ee0e460eb572aaec17f082071f8ebf1d6f7330',
+      source_kind: 'remote',
+      source_path: 'lfstream/challenge/lfsr_crypt.py',
+      source_lines: 'L4-L45',
+    },
+  },
+  {
+    name: 'tokencrypt',
+    path: join(challenge2026FingerprintDirectory, 'tokencrypt.json'),
+    intendedCardId: 'symmetric.slide.periodic-round',
+    expectedBucket: 'eligible',
+    expectedTopThree: ['symmetric.slide.periodic-round'],
+    expectedExample: {
+      challenge_id: 'bsidessf-2026-tokencrypt-service',
+      repo_sha: '68ee0e460eb572aaec17f082071f8ebf1d6f7330',
+      source_kind: 'remote',
+      source_path: 'tokencrypt/challenge/src/tc_demo.py',
+      source_lines: 'L12-L175',
+    },
+  },
+  {
+    name: 'kproof',
+    path: join(challenge2026FingerprintDirectory, 'kproof.json'),
+    intendedCardId: 'oracle.goldwasser-micali.replication',
+    expectedBucket: 'blocked',
+    expectedRuleId: 'authorized-gm-wrapper-oracle',
+    expectedTopThree: [
+      'oracle.goldwasser-micali.replication',
+      'prng.mt19937.state-clone',
+      'rsa.hastad.broadcast',
+    ],
+    expectedExample: {
+      challenge_id: 'bsidessf-2026-kproof',
+      repo_sha: '68ee0e460eb572aaec17f082071f8ebf1d6f7330',
+      source_kind: 'remote',
+      source_path: 'kproof/challenge/src/kproof.go',
+      source_lines: 'L64-L690',
+    },
+  },
+];
 const expectedCatalogIds = [
   'lattice.coppersmith.univariate-small-root',
   'lattice.subset-sum.query-schedule',
@@ -966,6 +1044,45 @@ test('ranker emits byte-identical canonical JSON and digests', async () => {
   });
 });
 
+test('2026 challenge fingerprints route intended cards in deterministic top positions', async () => {
+  // Given: five public 2026 challenge fingerprints with immutable source anchors.
+  const topOneMatches = [];
+
+  for (const fixture of challenge2026RoutingFixtures) {
+    // When: the public ranker scores the fixture against the shipped catalog.
+    const result = await runRanker(fixture.path, catalog);
+
+    // Then: the intended card is inside the exact expected top-three order.
+    assert.equal(result.code, 0, `${fixture.name}: ${result.stderr || result.stdout}`);
+    const report = JSON.parse(result.stdout);
+    const rankedBucket = report[fixture.expectedBucket];
+    const topThree = rankedBucket.slice(0, 3).map(({ card_id: cardId }) => cardId);
+    assert.deepEqual(topThree, fixture.expectedTopThree, fixture.name);
+    assert.equal(topThree.includes(fixture.intendedCardId), true, fixture.name);
+    if (fixture.expectedRuleId !== undefined) {
+      assert.equal(rankedBucket[0].rule_id, fixture.expectedRuleId, fixture.name);
+    }
+    topOneMatches.push(fixture.expectedBucket === 'eligible' && topThree[0] === fixture.intendedCardId);
+  }
+
+  assert.equal(topOneMatches.filter(Boolean).length >= 4, true);
+});
+
+test('2026 routing fixtures bind to the intended card metadata', async () => {
+  // Given: the shipped catalog card examples are the schema-owned metadata surface.
+  const cards = JSON.parse(await readFile(catalog, 'utf8'));
+
+  for (const fixture of challenge2026RoutingFixtures) {
+    // When: the intended card metadata is selected by its stable ID.
+    const card = cards.find(({ id }) => id === fixture.intendedCardId);
+    assert.notEqual(card, undefined, fixture.name);
+
+    // Then: a schema-valid pinned example matches the fixture's public source anchor.
+    assert.equal(card.examples.some((example) => Object.entries(fixture.expectedExample)
+      .every(([key, value]) => example[key] === value)), true, fixture.name);
+  }
+});
+
 test('ranker blocks missing required commands without running installers', async () => {
   // Given: a capability record that explicitly marks Sage unavailable.
   const fingerprint = JSON.parse(await readFile(blockedSageFingerprint, 'utf8'));
@@ -1739,7 +1856,8 @@ test('ranker rejects fingerprint and catalog schema mismatches deterministically
 
 test('current v2 catalog and fingerprint fixtures round-trip as typed values', async () => {
   const fixturePaths = [blockedSageFingerprint, hastadFingerprint, inferredFamilyFingerprint,
-    join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json')];
+    join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'task5-review-ranks.json'),
+    ...challenge2026RoutingFixtures.map(({ path }) => path)];
   const script = [
     'import json, sys',
     "sys.path.insert(0, 'skills/zest-crypto/scripts')",
@@ -1763,7 +1881,7 @@ test('current v2 catalog and fingerprint fixtures round-trip as typed values', a
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     cards: 21,
-    fingerprints: 13,
+    fingerprints: 18,
     versions: [2],
     source_kinds: ['local', 'remote'],
     inference_levels: ['direct', 'inferred', 'variant'],
