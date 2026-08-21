@@ -398,3 +398,19 @@ test('zest-crypto does not ship a package README', async () => {
   // Then: package instructions remain progressively disclosed from SKILL.md.
   assert.deepEqual(readmes, []);
 });
+
+test('zest-crypto ships every catalog template inside the standalone package', async () => {
+  // Given: the catalog paths installed with the standalone skill.
+  const skillDirectory = join(root, 'skills', 'zest-crypto');
+  const catalogPath = join(skillDirectory, 'references', 'attack-cards.json');
+  const cards = JSON.parse(await readFile(catalogPath, 'utf8'));
+
+  // When: each non-null solver template is resolved from the package root.
+  const templates = cards.filter(({ template }) => template !== null).map(({ template }) => join(skillDirectory, template));
+
+  // Then: every path remains internal and names a bundled regular package file.
+  for (const template of templates) {
+    assert.equal(isInside(skillDirectory, template), true, `${template}: catalog template escapes the standalone skill`);
+    assert.equal(existsSync(template), true, `${template}: catalog template is missing from the standalone skill`);
+  }
+});

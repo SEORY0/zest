@@ -19,6 +19,29 @@ const blockedSageFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 
 const inferredFamilyFingerprint = join(root, 'scripts', 'fixtures', 'zest-crypto', 'fingerprints', 'inferred-family.json');
 const schemaReference = join(root, 'skills', 'zest-crypto', 'references', 'attack-card-schema.md');
 const sourceFixtures = join(root, 'scripts', 'fixtures', 'zest-crypto', 'sources');
+const expectedCatalogIds = [
+  'lattice.coppersmith.univariate-small-root',
+  'lattice.subset-sum.query-schedule',
+  'oracle.cbc-padding',
+  'oracle.goldwasser-micali.replication',
+  'paper.csidh.auxiliary-point-leak',
+  'paper.ecdsa.lcg-nonce',
+  'paper.frost.threshold-signature',
+  'paper.matrix-product.trace-lattice',
+  'paper.stream-cipher.fca-lwpm',
+  'paper.uov.wrapper-structure',
+  'paper.wagner.generalized-birthday',
+  'prng.mt19937.state-clone',
+  'rsa.common-modulus.coprime-exponents',
+  'rsa.franklin-reiter.related-message',
+  'rsa.hastad.broadcast',
+  'rsa.wiener.small-d',
+  'signature.ecdsa.partial-nonce-hnp',
+  'signature.ecdsa.reused-nonce',
+  'stream.lfsr.known-plaintext',
+  'symmetric.rotor.group-conjugacy',
+  'symmetric.slide.periodic-round',
+];
 
 function runValidator(catalogPath) {
   return runValidatorWith('python3', catalogPath);
@@ -223,6 +246,41 @@ async function parseFingerprintDocument(document) {
   }
 }
 
+test('catalog contains the exact supported attack families', async () => {
+  // Given: the standalone decision catalog promised by the public skill contract.
+  const cards = JSON.parse(await readFile(catalog, 'utf8'));
+
+  // When: its stable card identifiers are enumerated.
+  const cardIds = cards.map(({ id }) => id).sort();
+
+  // Then: all and only the 21 supported attack families are present.
+  assert.deepEqual(cardIds, expectedCatalogIds);
+});
+
+test('catalog cards provide complete bounded attack contracts', async () => {
+  // Given: every card consumed by the validator, ranker, and solver workflow.
+  const cards = JSON.parse(await readFile(catalog, 'utf8'));
+
+  // When: the executable parts of each decision contract are inspected.
+  for (const card of cards) {
+    // Then: the card can be gated, falsified cheaply, attempted with a bound, sourced, and proved.
+    assert.equal(card.requires.length > 0, true, `${card.id}: missing requirement`);
+    assert.equal(card.rejects.length + card.negative_matches.length > 0, true, `${card.id}: missing rejection condition`);
+    assert.equal(card.cheap_probes.length > 0, true, `${card.id}: missing cheap probe`);
+    assert.equal(card.cheap_probes.every(({ max_seconds }) => Number.isInteger(max_seconds) && max_seconds >= 0), true, `${card.id}: unbounded cheap probe`);
+    assert.equal(card.tooling.length > 0, true, `${card.id}: missing command contract`);
+    assert.equal(card.procedure.length > 0, true, `${card.id}: missing procedure`);
+    assert.equal(card.verification.length > 0, true, `${card.id}: missing proof step`);
+    assert.equal(card.citations.length > 0, true, `${card.id}: missing canonical citation`);
+    assert.equal(card.citations.every(({ assumptions }) => assumptions.length > 0), true, `${card.id}: citation assumptions are missing`);
+    if (card.template === null) {
+      assert.equal(card.procedure.some(({ id }) => id === 'solver-outline'), true, `${card.id}: missing explicit solver outline`);
+    } else {
+      assert.equal(existsSync(join(root, 'skills', 'zest-crypto', card.template)), true, `${card.id}: bundled template is missing`);
+    }
+  }
+});
+
 test('validator reports an invalid card ID as a structured issue', async () => {
   // Given: a catalog containing an ID outside the public card-ID grammar.
   assert.equal(existsSync(invalidCatalog), true, 'malformed catalog fixture is missing');
@@ -240,20 +298,26 @@ test('validator reports an invalid card ID as a structured issue', async () => {
 });
 
 test('validator reports a missing catalog input as a structured issue', async () => {
-  // Given: the future bundled catalog path before Task 5 creates it.
-  assert.equal(existsSync(catalog), false, 'Task 2 must not create the catalog');
+  // Given: an absent path distinct from the bundled catalog.
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'zest-crypto-missing-catalog-'));
+  const missingCatalog = join(fixtureDirectory, 'missing.json');
+  assert.equal(existsSync(missingCatalog), false);
 
-  // When: the validator reads the absent input path.
-  const result = await runValidator(catalog);
-  const output = JSON.parse(result.stdout);
+  try {
+    // When: the validator reads the absent input path.
+    const result = await runValidator(missingCatalog);
+    const output = JSON.parse(result.stdout);
 
-  // Then: the filesystem boundary is reported as data, not as a Python traceback.
-  assert.equal(result.code, 2);
-  assert.equal(result.stderr, '');
-  assert.equal(output.ok, false);
-  assert.deepEqual(output.issues.map(({ path, code }) => ({ path, code })), [
-    { path: '$', code: 'input-unreadable' },
-  ]);
+    // Then: the filesystem boundary is reported as data, not as a Python traceback.
+    assert.equal(result.code, 2);
+    assert.equal(result.stderr, '');
+    assert.equal(output.ok, false);
+    assert.deepEqual(output.issues.map(({ path, code }) => ({ path, code })), [
+      { path: '$', code: 'input-unreadable' },
+    ]);
+  } finally {
+    await rm(fixtureDirectory, { force: true, recursive: true });
+  }
 });
 
 test('validator lets parser ValueErrors propagate as programmer failures', async () => {
