@@ -48,25 +48,29 @@ def main(arguments: Sequence[str]) -> int:
         return _failure(CatalogIssue("$", "invalid-arguments", "expected one AttackCards JSON path"))
     catalog_path = Path(arguments[0])
     try:
-        raw = json.loads(
-            catalog_path.read_text(encoding="utf-8"),
-            parse_constant=_reject_non_standard_json_constant,
-            parse_float=_parse_finite_json_float,
-        )
-        cards = parse_catalog(raw)
-        issues = validate_catalog(cards, Path(__file__).resolve().parents[1])
+        contents = catalog_path.read_text(encoding="utf-8")
     except OSError as error:
         return _failure(CatalogIssue("$", "input-unreadable", str(error)))
     except UnicodeError as error:
         return _failure(CatalogIssue("$", "input-undecodable", str(error)))
+    try:
+        raw = json.loads(
+            contents,
+            parse_constant=_reject_non_standard_json_constant,
+            parse_float=_parse_finite_json_float,
+        )
     except RecursionError as error:
         return _failure(CatalogIssue("$", "input-too-deep", str(error)))
     except json.JSONDecodeError as error:
         return _failure(CatalogIssue("$", "invalid-json", "line {0}, column {1}".format(error.lineno, error.colno)))
     except OverflowError as error:
         return _failure(CatalogIssue("$", "invalid-json", str(error)))
-    except ValueError as error:
-        return _failure(CatalogIssue("$", "invalid-input-path", str(error)))
+    try:
+        cards = parse_catalog(raw)
+    except ParseError as error:
+        return _failure(CatalogIssue(error.path, error.code, error.detail))
+    try:
+        issues = validate_catalog(cards, Path(__file__).resolve().parents[1])
     except ParseError as error:
         return _failure(CatalogIssue(error.path, error.code, error.detail))
     if issues:

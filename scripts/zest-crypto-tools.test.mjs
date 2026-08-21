@@ -116,6 +116,39 @@ test('validator reports a missing catalog input as a structured issue', async ()
   ]);
 });
 
+test('validator lets parser ValueErrors propagate as programmer failures', async () => {
+  // Given: a parser invariant failure injected after the JSON boundary succeeds.
+  const harness = [
+    'import contextlib, io, json, sys',
+    "sys.path.insert(0, 'skills/zest-crypto/scripts')",
+    'import validate_attack_cards as validator',
+    'def programmer_bug(_raw):',
+    "  raise ValueError('simulated parser invariant failure')",
+    'validator.parse_catalog = programmer_bug',
+    'captured = io.StringIO()',
+    'with contextlib.redirect_stdout(captured):',
+    '  try:',
+    '    validator.main([sys.argv[1]])',
+    '  except ValueError as error:',
+    "    outcome = {'propagated': True, 'message': str(error)}",
+    '  else:',
+    "    outcome = {'propagated': False}",
+    "outcome['stdout'] = captured.getvalue()",
+    'print(json.dumps(outcome, sort_keys=True))',
+  ].join('\n');
+
+  // When: the validator reaches domain parsing.
+  const result = await runPython(harness, [invalidCatalog]);
+
+  // Then: an implementation defect is not relabeled as untrusted input.
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    propagated: true,
+    message: 'simulated parser invariant failure',
+    stdout: '',
+  });
+});
+
 test('validator accepts the documented complete AttackCard example', async () => {
   // Given: the complete schema example published with the portable skill.
   const contents = await readFile(schemaReference, 'utf8');
