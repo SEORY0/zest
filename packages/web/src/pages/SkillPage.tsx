@@ -65,10 +65,13 @@ export function SkillPage(): JSX.Element {
           </button>
         </div>
         <p style={{ marginTop: '0.75rem' }}>
-          That installs three skills: <code>zest</code> for everyday encoding and crypto work,{' '}
-          <code>zest-ctf</code> for flag-focused challenge solving, and <code>zest-triage</code> for working through an
-          unknown file. It writes to whichever agents it finds, so Claude Code, Codex, Gemini CLI and the rest all pick
-          them up. Add <code>--skill zest-ctf</code> to take only the CTF workflow.
+          That installs four skills: <code>zest</code> for everyday encoding and crypto work, <code>zest-ctf</code> for
+          byte and encoding puzzles, <code>zest-crypto</code> for math-heavy, paper-derived RSA, ECC, lattice,
+          signature, PRNG and oracle work, and <code>zest-triage</code> for working through an unknown file. It writes to
+          whichever agents it finds, so Claude Code, Codex, Gemini CLI and the rest all pick them up. For just the
+          mathematical cryptanalysis workflow, use <code>npx skills add {SKILL_REPO} --skill zest-crypto</code>. It solves
+          supported families, researches exact sources when authorized, and reports blocked or unsupported cases rather
+          than claiming every construction is solvable.
         </p>
         <p>
           The skills drive the <code>zest</code> CLI, so install that as well. It needs Node 20 or newer:
@@ -81,7 +84,7 @@ npm run build
 npm link -w @zest/cli`}
         </pre>
         <p style={{ marginTop: '0.75rem' }}>
-          Everything runs locally. Nothing is uploaded, and no API key is involved. All three skills are listed on{' '}
+          Everything runs locally. Nothing is uploaded, and no API key is involved. All four skills are listed on{' '}
           <a href={`https://www.skills.sh/${SKILL_REPO}`} target="_blank" rel="noreferrer noopener">
             skills.sh
           </a>

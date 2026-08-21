@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const execFileAsync = promisify(execFile);
+const publisher = join(root, 'scripts', 'publish-skill.mjs');
 const shippedExtensions = new Set(['.json', '.md', '.py', '.sage']);
 
 async function shippedFiles(directory) {
@@ -153,6 +157,28 @@ test('zest-crypto is a standalone publishable skill', async () => {
   assert.equal(/^name:\s*zest-crypto$/m.test(contents), true);
   for (const fragment of ['paper-derived', 'math-heavy', 'zest-ctf']) {
     assert.equal(contents.includes(fragment), true, `entrypoint is missing routing fragment: ${fragment}`);
+  }
+});
+
+test('zest-crypto is enumerated as a one-skill install by the publication dry run', async () => {
+  // Given: a dry-run publisher whose remote target is deliberately unavailable.
+  const fakeBin = await mkdtemp(join(tmpdir(), 'zest-crypto-publisher-bin-'));
+  const fakeGh = join(fakeBin, 'gh');
+  await writeFile(fakeGh, '#!/bin/sh\nexit 1\n', { encoding: 'utf8', mode: 0o700 });
+
+  try {
+    // When: the real publisher derives its standalone README commands from tracked skills.
+    const result = await execFileAsync(process.execPath, [publisher, '--dry-run'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
+    });
+
+    // Then: the parsed skill enumeration exposes the crypto-only installation command.
+    assert.match(result.stdout, /npx skills add SEORY0\/zest-skill --skill zest-crypto/);
+    assert.equal(result.stderr, '');
+  } finally {
+    await rm(fakeBin, { force: true, recursive: true });
   }
 });
 

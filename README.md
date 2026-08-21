@@ -1,6 +1,6 @@
 # Zest
 
-A local-first data and security workbench — a browser app, a CLI, and three agent skills over
+A local-first data and security workbench — a browser app, a CLI, and four agent skills over
 one engine.
 
 Chain operations into a recipe the way you would in CyberChef, but with a calmer interface, a
@@ -21,7 +21,8 @@ leak through process arguments, shell history or agent transcripts.
 | `packages/cli` | The `zest` command. |
 | `packages/web` | The browser workbench. |
 | `skills/zest` | Agent skill for the general workbench. |
-| `skills/zest-ctf` | Agent skill for CTF crypto, misc and first-pass artefact solving. |
+| `skills/zest-ctf` | Agent skill for CTF byte and encoding puzzles, plus first-pass artefact solving. |
+| `skills/zest-crypto` | Agent skill for math-heavy and paper-derived CTF cryptography. |
 | `skills/zest-triage` | Agent skill for triaging an unknown artefact. |
 
 ## Getting started
@@ -108,8 +109,14 @@ a decode worked without reading it.
 npx skills add SEORY0/zest-skill
 ```
 
-That installs all three skills into whichever agents it finds — Claude Code, Codex, Gemini CLI
-and the rest. Add `--skill zest`, `--skill zest-ctf` or `--skill zest-triage` to take just one.
+That installs all four skills into whichever agents it finds — Claude Code, Codex, Gemini CLI
+and the rest. To install only the mathematical cryptanalysis workflow:
+
+```bash
+npx skills add SEORY0/zest-skill --skill zest-crypto
+```
+
+Use `--skill zest`, `--skill zest-ctf` or `--skill zest-triage` to take one of the other workflows.
 They are listed on
 [skills.sh](https://www.skills.sh/SEORY0/zest-skill).
 
@@ -121,10 +128,13 @@ changing anything under `skills/`.
 The skills drive the `zest` CLI, so install that too (`npm link -w @zest/cli` above).
 
 `skills/zest` teaches the command model, discovery and result handling. `skills/zest-ctf`
-organises flag-focused hypotheses and executable playbooks for encodings, XOR/classical ciphers,
-known-key crypto, hashes, web tokens and byte carving. `skills/zest-triage` is a procedure for
-unknown artefacts: identify by magic bytes, measure entropy, extract strings and indicators,
-defang for reporting.
+organises flag-focused byte and encoding puzzles: transforms, XOR/classical ciphers, known-key
+crypto, hashes, web tokens and byte carving. `skills/zest-crypto` handles math-heavy,
+paper-derived work involving RSA, ECC, lattices, signatures, PRNGs and crypto oracles; it solves
+supported families, researches exact sources only when authorized, and reports blocked or
+unsupported cases rather than claiming every construction is solvable. `skills/zest-triage` is a
+procedure for unknown artefacts: identify by magic bytes, measure entropy, extract strings and
+indicators, defang for reporting.
 
 `references/operations.md` in each skill is generated from the registry by `npm run docs`, so the
 catalogue an agent reads always matches the code.

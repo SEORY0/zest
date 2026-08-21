@@ -118,6 +118,10 @@ for (const skill of skills) {
   }
 }
 
+function buildSingleSkillInstallCommands() {
+  return skills.map((skill) => `npx skills add ${TARGET} --skill ${skill.name}`).join('\n');
+}
+
 function buildReadme() {
   const rows = skills
     .map((s) => `| [\`${s.name}\`](skills/${s.dir}/SKILL.md) | ${s.description.split('. ')[0]}. |`)
@@ -138,7 +142,7 @@ npx skills add ${TARGET}
 To install just one:
 
 \`\`\`bash
-${skills.map((s) => `npx skills add ${TARGET} --skill ${s.name}`).join('\n')}
+${buildSingleSkillInstallCommands()}
 \`\`\`
 
 ## What is in here
@@ -198,6 +202,7 @@ function publish() {
       const listed = ['README.md', '.gitignore', ...sourceManifest.map((entry) => entry.path)];
       console.log(`Would create ${TARGET} and publish:`);
       for (const file of listed) console.log(`  ${file}`);
+      console.log(`\nInstall one skill with:\n${buildSingleSkillInstallCommands()}`);
       return;
     }
 
