@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-test/
 .omc/
+.worktrees/
 *.tsbuildinfo
 .DS_Store
 *.log
