@@ -9,6 +9,7 @@
  *
  *   npm run publish:skill              # push if anything changed
  *   npm run publish:skill -- --dry-run # show what would change
+ *   npm run publish:skill -- --help    # show safe usage
  *
  * Requires `gh` to be authenticated with push access to the target repo.
  */
@@ -23,7 +24,20 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = 'SEORY0/zest-skill';
-const dryRun = process.argv.includes('--dry-run');
+const USAGE = 'Usage: node scripts/publish-skill.mjs [--dry-run | --help]';
+const cliArguments = process.argv.slice(2);
+
+if (cliArguments.length === 1 && (cliArguments[0] === '--help' || cliArguments[0] === '-h')) {
+  console.log(USAGE);
+  process.exit(0);
+}
+if (cliArguments.length > 1 || (cliArguments.length === 1 && cliArguments[0] !== '--dry-run')) {
+  console.error(`Unsupported arguments: ${cliArguments.join(' ')}`);
+  console.error(USAGE);
+  process.exit(2);
+}
+
+const dryRun = cliArguments.length === 1;
 
 const run = (cmd, args, cwd) =>
   execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
