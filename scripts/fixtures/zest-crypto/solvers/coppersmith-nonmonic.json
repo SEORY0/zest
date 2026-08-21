@@ -1,0 +1,7 @@
+{
+  "beta": 1.0,
+  "bound": 20,
+  "coefficients": [-12, 2],
+  "max_roots": 8,
+  "modulus": 10403
+}
