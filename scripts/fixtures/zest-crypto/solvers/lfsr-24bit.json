@@ -1,0 +1,8 @@
+{
+  "expected_plaintext_sha256": "f60c7ffb968c93bfe3710b068873d13238de089392e25f26bfc9a307f88465eb",
+  "expected_state": 1,
+  "expected_taps": 128,
+  "max_candidates": 65536,
+  "max_steps": 2000000,
+  "width": 8
+}

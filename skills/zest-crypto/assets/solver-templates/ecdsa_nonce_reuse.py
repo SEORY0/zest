@@ -8,12 +8,18 @@
 from __future__ import annotations
 
 import json
+import math
+import os
+import stat
 import sys
 from pathlib import Path
 
 
 MAX_INPUT_BYTES = 1_000_000
 MAX_INTEGER_BITS = 1024
+MAX_JSON_DEPTH = 32
+MAX_JSON_INTEGER_DIGITS = 4096
+KNOWN_LARGE_PRIMES = frozenset((0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F, 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141))
 
 
 class SolverError(Exception):
@@ -31,22 +37,89 @@ def _failure(code):
 
 
 def _reject_constant(_value):
-    raise SolverError("invalid-json")
+    raise ValueError
+
+
+def _parse_json_integer(token):
+    digits = token[1:] if token.startswith("-") else token
+    if len(digits) > MAX_JSON_INTEGER_DIGITS:
+        raise ValueError
+    value = 0
+    for character in digits:
+        value = value * 10 + ord(character) - ord("0")
+    return -value if token.startswith("-") else value
+
+
+def _parse_json_float(token):
+    if len(token) > 128:
+        raise ValueError
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError
+    return value
+
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = value
+    return result
+
+
+def _check_depth(document):
+    pending = [(document, 1)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > MAX_JSON_DEPTH:
+            raise SolverError("invalid-json")
+        if type(value) is dict:
+            pending.extend((item, depth + 1) for item in value.values())
+        elif type(value) is list:
+            pending.extend((item, depth + 1) for item in value)
+
+
+def _read_regular(path):
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    try:
+        descriptor = os.open(path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise SolverError("input-unreadable")
+        handle = os.fdopen(descriptor, "rb")
+        descriptor = -1
+        with handle:
+            content = handle.read(MAX_INPUT_BYTES + 1)
+    except SolverError:
+        raise
+    except (OSError, MemoryError):
+        raise SolverError("input-unreadable")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(content) > MAX_INPUT_BYTES:
+        raise SolverError("input-too-large")
+    try:
+        return content.decode("utf-8")
+    except (UnicodeError, MemoryError):
+        raise SolverError("input-unreadable")
 
 
 def _load(path):
     try:
-        if path.stat().st_size > MAX_INPUT_BYTES:
-            raise SolverError("input-too-large")
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        raise SolverError("input-unreadable")
-    try:
-        document = json.loads(text, parse_constant=_reject_constant)
-    except (json.JSONDecodeError, RecursionError):
+        document = json.loads(
+            _read_regular(path),
+            object_pairs_hook=_unique_object,
+            parse_constant=_reject_constant,
+            parse_float=_parse_json_float,
+            parse_int=_parse_json_integer,
+        )
+    except (ValueError, RecursionError, MemoryError):
         raise SolverError("invalid-json")
     if type(document) is not dict:
         raise SolverError("invalid-input")
+    _check_depth(document)
     return document
 
 
@@ -57,6 +130,42 @@ def _integer(document, key, minimum=0):
     if type(value) is not int or value < minimum or value.bit_length() > MAX_INTEGER_BITS:
         raise SolverError("invalid-input")
     return value
+
+
+def _is_prime_64(value):
+    if value < 2:
+        return False
+    for divisor in (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37):
+        if value % divisor == 0:
+            return value == divisor
+    odd_part = value - 1
+    twos = 0
+    while odd_part % 2 == 0:
+        odd_part //= 2
+        twos += 1
+    for base in (2, 325, 9375, 28178, 450775, 9780504, 1795265022):
+        reduced_base = base % value
+        if reduced_base == 0:
+            continue
+        witness = pow(reduced_base, odd_part, value)
+        if witness in (1, value - 1):
+            continue
+        for _round in range(twos - 1):
+            witness = witness * witness % value
+            if witness == value - 1:
+                break
+        else:
+            return False
+    return True
+
+
+def _require_prime(value, code):
+    if value in KNOWN_LARGE_PRIMES:
+        return
+    if value.bit_length() > 64:
+        raise SolverError("unsupported-domain")
+    if not _is_prime_64(value):
+        raise SolverError(code)
 
 
 def _extended_gcd(left, right):
@@ -80,8 +189,6 @@ def _inverse(value, modulus, code):
 
 
 def _on_curve(point, curve):
-    if point is None:
-        return True
     x, y = point
     p, a, b = curve
     return 0 <= x < p and 0 <= y < p and (y * y - x * x * x - a * x - b) % p == 0
@@ -126,9 +233,9 @@ def _parse_signature(raw, order):
     r = _integer(raw, "r", 1)
     s = _integer(raw, "s", 1)
     z = _integer(raw, "z", 0)
-    if r >= order or s >= order or z >= order:
+    if r >= order or s >= order:
         raise SolverError("invalid-input")
-    return r, s, z
+    return r, s, z % order
 
 
 def _solve(document):
@@ -137,15 +244,17 @@ def _solve(document):
     curve = (p, _integer(curve_document, "a") % p, _integer(curve_document, "b") % p)
     generator = (_integer(curve_document, "gx"), _integer(curve_document, "gy"))
     order = _integer(document, "order", 3)
+    _require_prime(p, "invalid-field")
+    _require_prime(order, "invalid-order")
+    if (4 * pow(curve[1], 3, p) + 27 * pow(curve[2], 2, p)) % p == 0:
+        raise SolverError("invalid-curve")
     public_document = document.get("public_key")
     public_key = (_integer(public_document, "x"), _integer(public_document, "y"))
     raw_signatures = document.get("signatures")
     if type(raw_signatures) is not list or len(raw_signatures) != 2:
         raise SolverError("invalid-input")
     signatures = tuple(_parse_signature(raw, order) for raw in raw_signatures)
-    if p.bit_length() > MAX_INTEGER_BITS or order.bit_length() > MAX_INTEGER_BITS:
-        raise SolverError("invalid-input")
-    if not _on_curve(generator, curve) or not _on_curve(public_key, curve):
+    if generator is None or public_key is None or not _on_curve(generator, curve) or not _on_curve(public_key, curve):
         raise SolverError("invalid-curve")
     if _scalar_multiply(order, generator, curve) is not None:
         raise SolverError("invalid-curve")

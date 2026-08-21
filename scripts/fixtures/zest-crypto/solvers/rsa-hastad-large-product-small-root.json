@@ -1,0 +1,6 @@
+{
+  "ciphertexts": [8, 8, 8],
+  "exponent": 3,
+  "max_root_bits": 2,
+  "moduli": [55, 391, 1189]
+}

@@ -1,0 +1,6 @@
+{
+  "expected_plaintext_sha256": "86bb50caa92fbd2f56839afd9c91d56293e687c66e341842168eff058027bbac",
+  "max_candidates": 2000000,
+  "max_steps": 1000000,
+  "width": 10
+}

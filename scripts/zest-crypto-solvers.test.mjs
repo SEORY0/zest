@@ -1,47 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFile, spawnSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import test from 'node:test';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
-const execFileAsync = promisify(execFile);
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const templates = join(root, 'skills', 'zest-crypto', 'assets', 'solver-templates');
-const fixtures = join(root, 'scripts', 'fixtures', 'zest-crypto', 'solvers');
-const python = process.env.PYTHON ?? 'python3';
-const sageAvailable = spawnSync('sage', ['--version'], { stdio: 'ignore' }).status === 0;
-
-async function run(command, args) {
-  try {
-    const result = await execFileAsync(command, args, { encoding: 'utf8', timeout: 10_000 });
-    return { code: 0, stderr: result.stderr, stdout: result.stdout };
-  } catch (error) {
-    return {
-      code: typeof error.code === 'number' ? error.code : -1,
-      stderr: error.stderr ?? '',
-      stdout: error.stdout ?? '',
-    };
-  }
-}
-
-function parseSuccess(result) {
-  assert.equal(result.code, 0, result.stderr || result.stdout);
-  assert.equal(result.stderr, '');
-  assert.equal(result.stdout.endsWith('\n'), true);
-  const document = JSON.parse(result.stdout);
-  assert.equal(document.verified, true);
-  return document;
-}
-
-function assertFailure(result, code) {
-  assert.notEqual(result.code, 0);
-  assert.equal(result.stderr, '');
-  const document = JSON.parse(result.stdout);
-  assert.deepEqual(document, { error: { code }, verified: false });
-  assert.equal(result.stdout.includes('Traceback'), false);
-}
+import {
+  assertFailure, fixtures, parseSuccess, python, registerReaderTests, run, sageAvailable, templates,
+} from './zest-crypto-solvers.test-support.mjs';
 
 const jsonSuccessCases = [
   {
@@ -70,6 +34,8 @@ const jsonSuccessCases = [
     expected: { indices: [0, 0, 0, 0], residue: 10, sum: 10, values: [1, 2, 3, 4] },
   },
 ];
+const jsonScripts = [...jsonSuccessCases.map(({ script }) => script), 'rotor_group_conjugacy.py',
+  'coppersmith_univariate.sage'];
 
 for (const scenario of jsonSuccessCases) {
   test(scenario.name, async () => {
@@ -130,7 +96,7 @@ test('LFSR recovers state and taps, replays the prefix, and proves the plaintext
   const metadata = JSON.parse(await readFile(join(fixtures, 'lfsr-known-plaintext.json'), 'utf8'));
   const args = [join(templates, 'lfsr_known_plaintext.py'), join(fixtures, 'lfsr-ciphertext.hex'),
     join(fixtures, 'lfsr-known-prefix.hex'), metadata.expected_plaintext_sha256,
-    String(metadata.width), String(metadata.max_candidates)];
+    String(metadata.width), String(metadata.max_candidates), String(metadata.max_steps)];
 
   // When: the bounded Galois-LFSR recovery CLI runs.
   const document = parseSuccess(await run(python, args));
@@ -150,9 +116,9 @@ test('LFSR rejects malformed hex and a plaintext digest proof mismatch', async (
 
   // When: each adversarial boundary is executed.
   const malformed = await run(python, [...base, join(fixtures, 'lfsr-malformed.hex'),
-    join(fixtures, 'lfsr-known-prefix.hex'), mismatch.expected_plaintext_sha256, '8', '65536']);
+    join(fixtures, 'lfsr-known-prefix.hex'), mismatch.expected_plaintext_sha256, '8', '65536', '5000000']);
   const wrongDigest = await run(python, [...base, join(fixtures, 'lfsr-ciphertext.hex'),
-    join(fixtures, 'lfsr-known-prefix.hex'), mismatch.expected_plaintext_sha256, '8', '65536']);
+    join(fixtures, 'lfsr-known-prefix.hex'), mismatch.expected_plaintext_sha256, '8', '65536', '5000000']);
 
   // Then: neither can be labeled verified.
   assertFailure(malformed, 'invalid-hex');
@@ -184,6 +150,91 @@ test('rotor solver rejects independent replay proof mismatch and malformed JSON'
   assertFailure(malformed, 'invalid-json');
 });
 
+for (const [fixture, code] of [
+  ['duplicate-top-level.json', 'invalid-json'],
+  ['duplicate-nested.json', 'invalid-json'],
+  ['deep-json.json', 'invalid-json'],
+  ['nonstandard-constant.json', 'invalid-json'],
+  ['float-overflow.json', 'invalid-json'],
+  ['integer-token-at-limit.json', 'invalid-input'],
+  ['integer-token-oversized.json', 'invalid-json'],
+]) {
+  test(`every JSON template gives one stable result for ${fixture}`, async () => {
+    // Given: one adversarial JSON token/structure shared by every JSON boundary.
+    const path = join(fixtures, fixture);
+
+    // When: every self-contained JSON template parses it.
+    const results = await Promise.all(jsonScripts.map((script) => run(python, [join(templates, script), path])));
+
+    // Then: parser behavior is identical across templates and Python versions.
+    results.forEach((result) => assertFailure(result, code));
+  });
+}
+
+registerReaderTests(test, jsonScripts);
+
+for (const [fixture, code] of [
+  ['rsa-wiener-repeated-prime.json', 'invalid-factorization'],
+  ['rsa-wiener-composite-factors.json', 'invalid-factorization'],
+]) {
+  test(`Wiener rejects ${fixture} before claiming an RSA private exponent`, async () => {
+    const result = await run(python, [join(templates, 'rsa_wiener.py'), join(fixtures, fixture)]);
+    assertFailure(result, code);
+  });
+}
+
+test('Hastad applies root and product limits to their own values', async () => {
+  const result = await run(python, [join(templates, 'rsa_hastad.py'),
+    join(fixtures, 'rsa-hastad-large-product-small-root.json')]);
+  const document = parseSuccess(result);
+  assert.equal(document.message, 2);
+  assert.deepEqual(document.proof.recomputed, [8, 8, 8]);
+});
+
+for (const [fixture, code] of [
+  ['ecdsa-singular-curve.json', 'invalid-curve'],
+  ['ecdsa-composite-field.json', 'invalid-field'],
+  ['ecdsa-multiple-order.json', 'invalid-order'],
+]) {
+  test(`ECDSA rejects unsupported domain fixture ${fixture}`, async () => {
+    const result = await run(python, [join(templates, 'ecdsa_nonce_reuse.py'), join(fixtures, fixture)]);
+    assertFailure(result, code);
+  });
+}
+
+test('ECDSA reduces a bounded nonnegative z representative modulo the subgroup order', async () => {
+  const result = await run(python, [join(templates, 'ecdsa_nonce_reuse.py'),
+    join(fixtures, 'ecdsa-z-plus-order.json')]);
+  const document = parseSuccess(result);
+  assert.deepEqual({ k: document.k, privateScalar: document.private_scalar }, { k: 77, privateScalar: 123 });
+});
+
+test('LFSR uniqueness accepts the public 24-bit observation', async () => {
+  const metadata = JSON.parse(await readFile(join(fixtures, 'lfsr-24bit.json'), 'utf8'));
+  const result = await run(python, [join(templates, 'lfsr_known_plaintext.py'),
+    join(fixtures, 'lfsr-24bit-ciphertext.hex'), join(fixtures, 'lfsr-24bit-known-prefix.hex'),
+    metadata.expected_plaintext_sha256, String(metadata.width), String(metadata.max_candidates),
+    String(metadata.max_steps)]);
+  const document = parseSuccess(result);
+  assert.deepEqual({ state: document.initial_state, taps: document.tap_mask }, { state: 1, taps: 128 });
+});
+
+test('LFSR rejects a candidate-observation product beyond the explicit step budget', async () => {
+  const metadata = JSON.parse(await readFile(join(fixtures, 'lfsr-work-bound.json'), 'utf8'));
+  const result = await run(python, [join(templates, 'lfsr_known_plaintext.py'),
+    join(fixtures, 'lfsr-ciphertext.hex'), join(fixtures, 'lfsr-known-prefix.hex'),
+    metadata.expected_plaintext_sha256, String(metadata.width), String(metadata.max_candidates),
+    String(metadata.max_steps)]);
+  assertFailure(result, 'work-bound-exceeded');
+});
+
+for (const fixture of ['rotor-duplicate-replay.json', 'rotor-conflicting-replay.json']) {
+  test(`rotor rejects repeated replay evidence in ${fixture}`, async () => {
+    const result = await run(python, [join(templates, 'rotor_group_conjugacy.py'), join(fixtures, fixture)]);
+    assertFailure(result, 'duplicate-replay-input');
+  });
+}
+
 test('solver package contains exactly eight bounded self-contained templates', async () => {
   // Given: the standalone solver-template directory.
   const expected = ['coppersmith_univariate.sage', 'ecdsa_nonce_reuse.py', 'lfsr_known_plaintext.py',
@@ -213,7 +264,7 @@ test('solver package contains exactly eight bounded self-contained templates', a
       assert.equal(structure.calls.includes(forbidden), false, `${filename}: forbidden call ${forbidden}`);
     }
     if (filename.endsWith('.sage')) {
-      for (const required of ['PolynomialRing', 'Zmod', 'load', 'small_roots']) {
+      for (const required of ['Fraction', 'PolynomialRing', 'Zmod', 'gcd', 'loads', 'small_roots']) {
         assert.equal(structure.calls.includes(required), true, `${filename}: missing structural call ${required}`);
       }
       for (const code of ['invalid-beta', 'invalid-bound', 'polynomial-not-monic']) {
@@ -247,7 +298,11 @@ test('Coppersmith template has structural guards and executes only when Sage is 
 
     // When: the installed Sage runtime executes the fixture.
     const document = parseSuccess(await run('sage', [script, join(fixtures, 'coppersmith-univariate.json')]));
+    const factorDocument = parseSuccess(await run('sage', [script, join(fixtures, 'coppersmith-factor-root.json')]));
 
-    // Then: every reported root was checked in the original congruence.
+    // Then: full-modulus and beta-factor roots carry exact divisor witnesses.
     assert.deepEqual(document.roots, [12]);
+    assert.deepEqual(document.proof.divisor_witnesses, [10403]);
+    assert.deepEqual(factorDocument.roots, [1]);
+    assert.deepEqual(factorDocument.proof.divisor_witnesses, [103]);
   });

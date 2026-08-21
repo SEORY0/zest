@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -31,18 +33,39 @@ def _failure(code):
     return 2
 
 
+def _read_regular(path):
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    try:
+        descriptor = os.open(path, flags)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise SolverError("input-unreadable")
+        handle = os.fdopen(descriptor, "rb")
+        descriptor = -1
+        with handle:
+            content = handle.read(MAX_HEX_FILE_BYTES + 1)
+    except SolverError:
+        raise
+    except (OSError, MemoryError):
+        raise SolverError("input-unreadable")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+    if len(content) > MAX_HEX_FILE_BYTES:
+        raise SolverError("input-too-large")
+    return content
+
+
 def _read_hex(path):
     try:
-        if path.stat().st_size > MAX_HEX_FILE_BYTES:
-            raise SolverError("input-too-large")
-        encoded = path.read_text(encoding="ascii").strip()
-    except (OSError, UnicodeError):
+        encoded = _read_regular(path).decode("ascii").strip()
+    except (UnicodeError, MemoryError):
         raise SolverError("input-unreadable")
     if not encoded or len(encoded) % 2 or any(character not in LOWER_HEX for character in encoded):
         raise SolverError("invalid-hex")
     try:
         return bytes.fromhex(encoded)
-    except ValueError:
+    except (ValueError, MemoryError):
         raise SolverError("invalid-hex")
 
 
@@ -75,15 +98,25 @@ def _keystream(initial_state, tap_mask, width, byte_count):
     return bytes(stream)
 
 
-def _recover(observed, width, max_candidates):
+def _matches(initial_state, tap_mask, width, observed):
+    state = initial_state
+    for observed_byte in observed:
+        for bit_index in range(8):
+            output, state = _step(state, tap_mask, width)
+            if output != (observed_byte >> bit_index) & 1:
+                return False
+    return True
+
+
+def _recover(observed, width, max_candidates, max_steps):
     mask = (1 << width) - 1
     candidate_count = mask * mask
-    if candidate_count > max_candidates:
+    if candidate_count > max_candidates or candidate_count * len(observed) * 8 > max_steps:
         raise SolverError("work-bound-exceeded")
     matches = []
     for initial_state in range(1, mask + 1):
         for tap_mask in range(1, mask + 1):
-            if _keystream(initial_state, tap_mask, width, len(observed)) == observed:
+            if _matches(initial_state, tap_mask, width, observed):
                 matches.append((initial_state, tap_mask))
                 if len(matches) > 1:
                     raise SolverError("ambiguous-solution")
@@ -92,15 +125,13 @@ def _recover(observed, width, max_candidates):
     return matches[0]
 
 
-def _solve(ciphertext, known_plaintext, expected_digest, width, max_candidates):
+def _solve(ciphertext, known_plaintext, expected_digest, width, max_candidates, max_steps):
     if len(ciphertext) > 1_000_000 or len(known_plaintext) > len(ciphertext):
         raise SolverError("invalid-input")
-    if len(known_plaintext) * 8 < width * 4:
-        raise SolverError("insufficient-known-plaintext")
     if len(expected_digest) != 64 or any(character not in LOWER_HEX for character in expected_digest):
         raise SolverError("invalid-arguments")
     observed = bytes(left ^ right for left, right in zip(ciphertext, known_plaintext))
-    initial_state, tap_mask = _recover(observed, width, max_candidates)
+    initial_state, tap_mask = _recover(observed, width, max_candidates, max_steps)
     stream = _keystream(initial_state, tap_mask, width, len(ciphertext))
     plaintext = bytes(left ^ right for left, right in zip(ciphertext, stream))
     known_prefix_replayed = plaintext[: len(known_plaintext)] == known_plaintext
@@ -121,14 +152,15 @@ def _solve(ciphertext, known_plaintext, expected_digest, width, max_candidates):
 
 
 def main(arguments):
-    if len(arguments) != 5:
+    if len(arguments) != 6:
         return _failure("invalid-arguments")
     try:
         ciphertext = _read_hex(Path(arguments[0]))
         known_plaintext = _read_hex(Path(arguments[1]))
         width = _parse_small_integer(arguments[3], 2, 12)
         max_candidates = _parse_small_integer(arguments[4], 1, 2_000_000)
-        result = _solve(ciphertext, known_plaintext, arguments[2], width, max_candidates)
+        max_steps = _parse_small_integer(arguments[5], 1, 100_000_000)
+        result = _solve(ciphertext, known_plaintext, arguments[2], width, max_candidates, max_steps)
     except SolverError as error:
         return _failure(error.code)
     _emit(result)

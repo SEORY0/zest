@@ -3,5 +3,6 @@
   "expected_state": 167,
   "expected_taps": 184,
   "max_candidates": 65536,
+  "max_steps": 5000000,
   "width": 8
 }
