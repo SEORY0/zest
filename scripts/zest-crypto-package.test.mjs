@@ -12,6 +12,22 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const execFileAsync = promisify(execFile);
 const publisher = join(root, 'scripts', 'publish-skill.mjs');
 const shippedExtensions = new Set(['.json', '.md', '.py', '.sage']);
+const pythonScriptDirectory = join(root, 'skills', 'zest-crypto', 'scripts');
+const splitPythonModules = new Set([
+  'fingerprint.py',
+  'zest_crypto_conditions.py',
+  'zest_crypto_documents.py',
+  'zest_crypto_fingerprint_extract.py',
+  'zest_crypto_parse.py',
+  'zest_crypto_parse_catalog.py',
+  'zest_crypto_parse_conditions.py',
+  'zest_crypto_parse_fingerprint.py',
+  'zest_crypto_parse_values.py',
+]);
+const extractedPythonModules = [...splitPythonModules].filter((name) => name.startsWith('zest_crypto_') && ![
+  'zest_crypto_conditions.py',
+  'zest_crypto_parse.py',
+].includes(name));
 
 async function shippedFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -180,6 +196,104 @@ test('zest-crypto is enumerated as a one-skill install by the publication dry ru
   } finally {
     await rm(fakeBin, { force: true, recursive: true });
   }
+});
+
+test('zest-crypto production Python modules stay portable and publishable', async () => {
+  // Given: every directly executable or importable Python module shipped by the standalone skill.
+  const purePythonLineCount = (source) => source
+    .split(/\r?\n/)
+    .filter((line) => line.trim() && !line.trimStart().startsWith('#'))
+    .length;
+  const entries = await readdir(pythonScriptDirectory, { withFileTypes: true });
+  const pythonNames = entries
+    .filter((entry) => entry.isFile() && extname(entry.name) === '.py')
+    .map((entry) => entry.name)
+    .sort();
+  const sources = new Map(await Promise.all(pythonNames.map(async (name) => [
+    name,
+    await readFile(join(pythonScriptDirectory, name), 'utf8'),
+  ])));
+
+  // When: module size, metadata, import topology, Git tracking, publication, and Python 3.8 imports are checked.
+  for (const [name, source] of sources) {
+    const pureLines = purePythonLineCount(source);
+    assert.equal(pureLines <= 250, true, `${name}: ${pureLines} pure lines exceeds 250`);
+    if (splitPythonModules.has(name)) {
+      assert.equal(pureLines <= 230, true, `${name}: ${pureLines} pure lines exceeds split margin`);
+    }
+    assert.match(
+      source,
+      /^(?:#![^\n]*\r?\n)?# \/\/\/ script\r?\n# requires-python = ">=3\.8"\r?\n# dependencies = \[\]\r?\n# \/\/\//,
+      `${name}: missing portable PEP 723 metadata`,
+    );
+    assert.doesNotMatch(source, /^from\s+\./m, `${name}: relative sibling imports break direct execution`);
+  }
+
+  assert.equal(pythonNames.includes('__init__.py'), false);
+  const trackedResult = await execFileAsync('git', ['ls-files', '--', 'skills/zest-crypto/scripts'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  const tracked = new Set(trackedResult.stdout.trim().split(/\r?\n/));
+  for (const name of extractedPythonModules) {
+    assert.equal(tracked.has(`skills/zest-crypto/scripts/${name}`), true, `${name}: missing from Git manifest`);
+  }
+
+  const fakeBin = await mkdtemp(join(tmpdir(), 'zest-crypto-python-publisher-bin-'));
+  const fakeGh = join(fakeBin, 'gh');
+  await writeFile(fakeGh, '#!/bin/sh\nexit 1\n', { encoding: 'utf8', mode: 0o700 });
+  try {
+    const published = await execFileAsync(process.execPath, [publisher, '--dry-run'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
+    });
+    for (const name of extractedPythonModules) {
+      assert.equal(
+        published.stdout.includes(`skills/zest-crypto/scripts/${name}`),
+        true,
+        `${name}: missing from publication dry run`,
+      );
+    }
+  } finally {
+    await rm(fakeBin, { force: true, recursive: true });
+  }
+
+  const oversizedFixture = await mkdtemp(join(tmpdir(), 'zest-crypto-python-size-'));
+  const oversizedPath = join(oversizedFixture, 'oversized.py');
+  try {
+    await writeFile(oversizedPath, 'pass\n'.repeat(251), 'utf8');
+    const oversizedSource = await readFile(oversizedPath, 'utf8');
+    assert.equal(purePythonLineCount(oversizedSource), 251);
+    assert.equal(purePythonLineCount(oversizedSource) <= 250, false);
+  } finally {
+    await rm(oversizedFixture, { force: true, recursive: true });
+  }
+
+  const importNames = pythonNames.map((name) => name.slice(0, -3));
+  const compileAndImport = [
+    'import importlib, pathlib, sys',
+    'root = pathlib.Path(sys.argv[1]).resolve()',
+    "for path in sorted(root.glob('*.py')):",
+    "  compile(path.read_text(encoding='utf-8'), str(path), 'exec')",
+    'sys.path.insert(0, str(root))',
+    'for name in sys.argv[2:]:',
+    '  importlib.import_module(name)',
+  ].join('\n');
+  const imported = await execFileAsync('python3.8', [
+    '-c',
+    compileAndImport,
+    pythonScriptDirectory,
+    ...importNames,
+  ], {
+    cwd: tmpdir(),
+    encoding: 'utf8',
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' },
+  });
+
+  // Then: the tracked publisher surface and arbitrary-CWD Python runtime accept every bounded module.
+  assert.equal(imported.stdout, '');
+  assert.equal(imported.stderr, '');
 });
 
 test('zest-crypto ships only self-contained Markdown links', async () => {
