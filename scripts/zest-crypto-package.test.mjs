@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, extname, join, relative } from 'node:path';
 import test from 'node:test';
@@ -14,6 +14,11 @@ async function shippedFiles(directory) {
   const nested = await Promise.all(
     entries.map(async (entry) => {
       const path = join(directory, entry.name);
+      assert.equal(
+        entry.isSymbolicLink(),
+        false,
+        `${path}: symbolic links are not allowed in the standalone skill`,
+      );
       if (entry.isDirectory()) return shippedFiles(path);
       return shippedExtensions.has(extname(entry.name)) ? [path] : [];
     }),
@@ -215,6 +220,102 @@ test('zest-crypto rejects malformed percent encoding deterministically', async (
 
     // Then: malformed encoding is rejected with the checker-owned diagnostic.
     await assert.rejects(check, /invalid local Markdown URL/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects a symlinked package directory before recursion', async () => {
+  // Given: a package directory symlink that points to the fixture parent.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(join(skillDirectory, 'fixture.md'), 'No links.\n', 'utf8');
+  await symlink('..', join(skillDirectory, 'outside'), 'dir');
+
+  try {
+    // When: the package walker encounters the directory entry.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: it rejects the symlink without following it or recursing forever.
+    await assert.rejects(check, /symbolic links are not allowed in the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects a symlinked package file that resolves outside', async () => {
+  // Given: a lexically internal Markdown target symlinked to an outside file.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(join(fixtureRoot, 'outside.md'), 'outside\n', 'utf8');
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Escape](escape.md)\n', 'utf8');
+  await symlink('../outside.md', join(skillDirectory, 'escape.md'), 'file');
+
+  try {
+    // When: the package walker and link checker inspect the package.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: the symlink is rejected before its outside target can be accepted.
+    await assert.rejects(check, /symbolic links are not allowed in the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto accepts ordinary internal package files', async () => {
+  // Given: a package with a normal nested Markdown target.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  const referencesDirectory = join(skillDirectory, 'references');
+  await mkdir(referencesDirectory, { recursive: true });
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Internal](references/internal.md)\n', 'utf8');
+  await writeFile(join(referencesDirectory, 'internal.md'), 'internal\n', 'utf8');
+
+  try {
+    // When: the package walker and link checker inspect ordinary files.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: the self-contained package remains accepted.
+    await assert.doesNotReject(check);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto rejects broken symlinks deterministically', async () => {
+  // Given: a Markdown target represented by a broken package symlink.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Broken](broken.md)\n', 'utf8');
+  await symlink('missing.md', join(skillDirectory, 'broken.md'), 'file');
+
+  try {
+    // When: the package walker encounters the broken symlink.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: it reports the forbidden entry instead of depending on target existence.
+    await assert.rejects(check, /broken\.md: symbolic links are not allowed in the standalone skill/);
+  } finally {
+    await rm(fixtureRoot, { force: true, recursive: true });
+  }
+});
+
+test('zest-crypto reports missing internal link targets deterministically', async () => {
+  // Given: a package with an ordinary missing Markdown target.
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'zest-crypto-package-'));
+  const skillDirectory = join(fixtureRoot, 'zest-crypto');
+  await mkdir(skillDirectory);
+  await writeFile(join(skillDirectory, 'fixture.md'), '[Missing](missing.md)\n', 'utf8');
+
+  try {
+    // When: the package link checker resolves the absent target.
+    const check = assertLocalMarkdownLinks(skillDirectory);
+
+    // Then: it reports the missing package file with a stable diagnostic.
+    await assert.rejects(check, /fixture\.md: missing\.md is missing from the standalone skill/);
   } finally {
     await rm(fixtureRoot, { force: true, recursive: true });
   }
